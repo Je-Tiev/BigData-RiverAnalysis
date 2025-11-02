@@ -6,7 +6,7 @@ from kafka import KafkaProducer
 
 
 # cai dat kafka
-KAFKA_SERVER = 'kafka:9092' 
+KAFKA_SERVER = 'kafka-service:9092' 
 KAFKA_TOPIC = 'river_sensors'
 DELAY_SECONDS = 1 
 
@@ -37,9 +37,12 @@ try:
         csv_reader = csv.DictReader(file)
         
         for row in csv_reader:
-            producer.send(KAFKA_TOPIC, value=row)
             
-            print(f"GỬI: [Time: {row['FullDate']}, Sông: {row['WaterbodyName']}]")
+            print(row)
+
+            producer.send(KAFKA_TOPIC, value=row)
+            # print(f"GỬI: [Time: {row['FullDate']}, Sông: {row['WaterbodyName']}]")
+            print(f"GỬI: [Time: {row['FullDate']}, Sông: {row['WaterbodyName']}]", flush=True)
             
             time.sleep(DELAY_SECONDS) 
 
