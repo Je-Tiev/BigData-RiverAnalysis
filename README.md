@@ -16,6 +16,4 @@
 
 
 ## Kiến trúc tổng thể
-![](imgs/overall-architecture.png)
-
 
