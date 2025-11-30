@@ -17,4 +17,3 @@
 
 ## Kiến trúc tổng thể
 
-
