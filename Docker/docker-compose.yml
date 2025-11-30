@@ -1,0 +1,157 @@
+services:
+  # ============================
+  # Kafka Controller
+  # ============================
+  kafka-controller:
+    image: apache/kafka:4.0.1
+    container_name: kafka-controller
+    ports:
+      - '9093:9093'
+    environment:
+      KAFKA_NODE_ID: 1
+      KAFKA_PROCESS_ROLES: controller
+      KAFKA_LISTENERS: CONTROLLER://:9093
+      KAFKA_CONTROLLER_LISTENER_NAMES: CONTROLLER
+      KAFKA_CONTROLLER_QUORUM_VOTERS: 1@kafka-controller:9093
+      KAFKA_LISTENER_SECURITY_PROTOCOL_MAP: CONTROLLER:PLAINTEXT
+      KAFKA_CLUSTER_ID: 'MkU3OEVBNTcwNTJENDM2Qk'
+    networks:
+      - iot-network
+    restart: always
+
+  # ============================
+  # Kafka Broker Node
+  # ============================
+  kafka-broker-1:
+    image: apache/kafka:4.0.1
+    container_name: kafka-broker-1
+    ports:
+      - '29092:9092'
+    environment:
+      KAFKA_NODE_ID: 4
+      KAFKA_PROCESS_ROLES: broker
+      KAFKA_LISTENERS: PLAINTEXT://:9092,INTERNAL://:19092
+      KAFKA_ADVERTISED_LISTENERS: INTERNAL://kafka-broker-1:19092,EXTERNAL://localhost:29092
+      KAFKA_LISTENER_SECURITY_PROTOCOL_MAP: INTERNAL:PLAINTEXT,PLAINTEXT:PLAINTEXT,EXTERNAL:PLAINTEXT
+      KAFKA_INTER_BROKER_LISTENER_NAME: INTERNAL
+      KAFKA_CONTROLLER_LISTENER_NAMES: CONTROLLER
+      KAFKA_CONTROLLER_QUORUM_VOTERS: 1@kafka-controller:9093
+      KAFKA_CLUSTER_ID: 'MkU3OEVBNTcwNTJENDM2Qk'
+    depends_on:
+      - kafka-controller
+    volumes:
+      - kafka_data:/var/lib/kafka/data
+    networks:
+      - iot-network
+    restart: always
+
+  # ============================
+  # Kafka UI
+  # ============================
+  kafka-ui:
+    container_name: kafka-ui
+    image: provectuslabs/kafka-ui:latest
+    ports:
+      - '8080:8080'
+    environment:
+      - KAFKA_CLUSTERS_0_NAME=Local_KRaft
+      - KAFKA_CLUSTERS_0_BOOTSTRAP_SERVERS=kafka-broker-1:9092
+    depends_on:
+      - kafka-broker-1
+    networks:
+      - iot-network
+    restart: always
+
+  # ============================
+  # MinIO
+  # ============================
+  minio:
+    image: minio/minio:latest
+    container_name: minio
+    command: server /data --console-address :9001
+    ports:
+      - '9000:9000'
+      - '30001:9001'
+    environment:
+      MINIO_ROOT_USER: admin
+      MINIO_ROOT_PASSWORD: password123
+    volumes:
+      - minio_data:/data
+    networks:
+      - iot-network
+    restart: always
+
+  # ============================
+  # MongoDB
+  # ============================
+  mongodb:
+    image: mongo:5.0
+    container_name: mongodb
+    ports:
+      - '27017:27017'
+    environment:
+      MONGO_INITDB_ROOT_USERNAME: root
+      MONGO_INITDB_ROOT_PASSWORD: password123
+    volumes:
+      - mongo_data:/data/db
+    networks:
+      - iot-network
+    restart: always
+
+  # ============================
+  # Spark Master
+  # ============================
+  spark-master:
+    image: spark:3.5.7-scala2.12-java17-python3-ubuntu
+    container_name: spark-master
+    command: /opt/spark/bin/spark-class org.apache.spark.deploy.master.Master
+    ports:
+      - "7077:7077"
+      - "30002:8080"
+    environment:
+      - SPARK_MASTER_HOST=spark-master
+    networks:
+      - iot-network
+    restart: always
+
+  # ============================
+  # Spark Worker
+  # ============================
+  spark-worker:
+    image: spark:3.5.7-scala2.12-java17-python3-ubuntu
+    container_name: spark-worker
+    command: /opt/spark/bin/spark-class org.apache.spark.deploy.worker.Worker spark://spark-master:7077
+    environment:
+      - SPARK_WORKER_CORES=2
+      - SPARK_WORKER_MEMORY=2G
+    depends_on:
+      - spark-master
+    networks:
+      - iot-network
+    restart: always
+
+  # ============================
+  # Grafana
+  # ============================
+  grafana:
+    image: grafana/grafana:latest
+    container_name: grafana
+    ports:
+      - '30003:3000'
+    environment:
+      GF_SECURITY_ADMIN_PASSWORD: admin123
+    networks:
+      - iot-network
+    restart: always
+
+# ============================
+# Networks & Volumes
+# ============================
+networks:
+  iot-network:
+    driver: bridge
+
+volumes:
+  minio_data:
+  mongo_data:
+  kafka_data:
