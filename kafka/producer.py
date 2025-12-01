@@ -6,7 +6,7 @@ from kafka import KafkaProducer
 
 
 # cai dat kafka
-KAFKA_SERVER = 'kafka-service:9092' 
+KAFKA_SERVER = 'localhost:29092' 
 KAFKA_TOPIC = 'river_sensors'
 DELAY_SECONDS = 1 
 
@@ -14,7 +14,7 @@ DELAY_SECONDS = 1
 script_dir = os.path.dirname(os.path.abspath(__file__))
 
 # lay duong dan den file data
-DATA_FILE = os.path.join(script_dir, "sorted_water_quality.csv")
+DATA_FILE = os.path.join(script_dir, "sorted_water_quality_1.csv")
 
 # ket noi kafka
 try:
