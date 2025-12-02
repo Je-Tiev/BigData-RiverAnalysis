@@ -1,3 +1,10 @@
+x-spark-commmon: &spark-common
+  image: spark:3.5.7
+  volumes:
+    - spark_data:/opt/spark/work-dir
+  networks:
+    - iot-network
+  restart: always
 services:
   # ============================
   # Kafka Controller
@@ -100,33 +107,29 @@ services:
   # Spark Master
   # ============================
   spark-master:
-    image: spark:3.5.7-scala2.12-java17-python3-ubuntu
+    <<: *spark-common
     container_name: spark-master
     command: /opt/spark/bin/spark-class org.apache.spark.deploy.master.Master
     ports:
       - '7077:7077'
-      - '30002:8080'
+      - '9090:8080'
     environment:
       - SPARK_MASTER_HOST=spark-master
-    networks:
-      - iot-network
-    restart: always
 
   # ============================
   # Spark Worker
   # ============================
   spark-worker:
-    image: spark:3.5.7-scala2.12-java17-python3-ubuntu
+    <<: *spark-common
     container_name: spark-worker
     command: /opt/spark/bin/spark-class org.apache.spark.deploy.worker.Worker spark://spark-master:7077
+    ports:
+      - "9091:8081" 
     environment:
       - SPARK_WORKER_CORES=2
       - SPARK_WORKER_MEMORY=2G
     depends_on:
       - spark-master
-    networks:
-      - iot-network
-    restart: always
 
   # ============================
   # Grafana
@@ -153,3 +156,4 @@ volumes:
   minio_data:
   mongo_data:
   kafka_controller_data:
+  spark_data:
