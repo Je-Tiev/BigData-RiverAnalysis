@@ -3,10 +3,77 @@ from pyspark.sql import SparkSession
 from pyspark.sql.functions import col, count, split, regexp_extract, regexp_replace, trim, when, expr, lower, explode, array, lit, size, from_json, to_timestamp, avg, min, max
 from pyspark.sql.types import *
 import os
+import sys
 
 # Cấu hình Logging
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
+
+# --- 0. SETUP JAVA VÀ ENVIRONMENT ---
+def find_java_home():
+    """Tìm JAVA_HOME tự động nếu không được set"""
+    try:
+        # Cách 1: Check JAVA_HOME đã set chưa
+        if "JAVA_HOME" in os.environ:
+            java_home = os.environ["JAVA_HOME"]
+            if os.path.exists(os.path.join(java_home, "bin", "java.exe")):
+                return java_home
+        
+        # Cách 2: Tìm Java từ registry (Windows)
+        try:
+            result = subprocess.run(
+                ['powershell', '-Command', 
+                 '(Get-Item "HKLM:\\Software\\JavaSoft\\Java Runtime Environment").Property | '
+                 'ForEach-Object { $key = Get-ItemProperty "HKLM:\\Software\\JavaSoft\\Java Runtime Environment\\$_"; '
+                 'if ($key.JavaHome) { return $key.JavaHome } }'],
+                capture_output=True, text=True, timeout=5
+            )
+            if result.stdout:
+                java_home = result.stdout.strip()
+                if os.path.exists(java_home):
+                    return java_home
+        except:
+            pass
+        
+        # Cách 3: Tìm từ Java command
+        try:
+            result = subprocess.run(
+                ['java', '-version'], 
+                capture_output=True, text=True, timeout=5
+            )
+            if result.returncode == 0:
+                # Tìm java.exe path
+                result = subprocess.run(
+                    ['where', 'java'], 
+                    capture_output=True, text=True, timeout=5
+                )
+                java_path = result.stdout.strip().split('\n')[0]
+                if java_path:
+                    # Trích JAVA_HOME từ bin/java.exe
+                    java_home = os.path.dirname(os.path.dirname(java_path))
+                    return java_home
+        except:
+            pass
+        
+        logger.warning("⚠️  Không tìm thấy JAVA_HOME tự động")
+        return None
+    except Exception as e:
+        logger.error(f"❌ Lỗi tìm Java: {str(e)}")
+        return None
+
+# Set JAVA_HOME
+java_home = find_java_home()
+if java_home:
+    os.environ["JAVA_HOME"] = java_home
+    logger.info(f"✅ JAVA_HOME đặt thành: {java_home}")
+else:
+    logger.error("❌ Không tìm thấy Java. Vui lòng cài JDK 8 hoặc cao hơn!")
+    logger.error("   Tải từ: https://www.oracle.com/java/technologies/downloads/")
+    sys.exit(1)
+
+# Xóa HADOOP_HOME để tránh conflict
+if "HADOOP_HOME" in os.environ:
+    del os.environ["HADOOP_HOME"]
 
 # --- 1. KHỞI TẠO SPARK VỚI MONGODB CONNECTOR VÀ ERROR HANDLING ---
 try:
@@ -18,13 +85,16 @@ try:
         .config("spark.mongodb.read.connection.uri", "mongodb://localhost:27017/river_monitoring.sensor_data") \
         .config("spark.sql.streaming.checkpointLocation", "./checkpoints") \
         .config("spark.local.dir", "./spark-tmp") \
+        .config("spark.driver.memory", "2g") \
+        .config("spark.executor.memory", "2g") \
+        .config("spark.sql.shuffle.partitions", "4") \
         .getOrCreate()
 
     spark.sparkContext.setLogLevel("WARN")
-    logger.info("✅ Spark session initialized successfully")
+    logger.info("✅ Spark session khởi tạo thành công")
     
 except Exception as e:
-    logger.error(f"❌ Failed to initialize Spark session: {str(e)}")
+    logger.error(f"❌ Lỗi khởi tạo Spark session: {str(e)}")
     raise
 
 # --- 2. ĐỊNH NGHĨA SCHEMA ---
@@ -144,27 +214,6 @@ try:
 except Exception as e:
     logger.error(f"❌ Data transformation failed: {str(e)}")
     raise
-
-# Đánh giá rủi ro (Data Enrichment)
-processed_df = parsed_df.withColumn(
-    "my_assessment",
-    when(
-        (col("ph").between(6.5, 8.5)) & 
-        (col("do_mgL") >= 5.0) & 
-        (col("ammonia") < 0.5), 
-        "SAFE"
-    ).otherwise("WARNING")
-)
-
-# Tạo cảnh báo
-processed_df = processed_df.withColumn(
-    "alert_message",
-    when(col("ph") < 4.0, "ACID_HIGH_DANGER")
-    .when(col("ph") > 9.0, "ALKALI_HIGH_DANGER")
-    .when(col("do_mgL") < 2.0, "FISH_KILL_RISK")
-    .when(col("ammonia") > 2.0, "TOXIC_WASTE")
-    .otherwise(None)
-)
 
 # --- 6. AGGREGATION & BATCH STATISTICS (tham khảo batch processing từ final.py) ---
 try:

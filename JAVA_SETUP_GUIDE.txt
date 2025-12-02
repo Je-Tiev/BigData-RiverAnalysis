@@ -1,0 +1,98 @@
+## 🔧 KHẮC PHỤC LỖI JAVA GATEWAY
+
+Lỗi `PySparkRuntimeError: [JAVA_GATEWAY_EXITED]` xảy ra khi Java chưa được cấu hình đúng.
+
+---
+
+## ✅ GIẢI PHÁP
+
+### **Bước 1: Kiểm tra Java đã cài chưa**
+
+```powershell
+java -version
+```
+
+**Nếu không cài:** Tải JDK từ https://www.oracle.com/java/technologies/downloads/
+- Chọn **Java SE 11 LTS** hoặc cao hơn
+- Chọn **Windows x64 Installer**
+
+---
+
+### **Bước 2: Cấu hình JAVA_HOME (nếu cần)**
+
+#### **Cách 1: Tự động (Dùng file fixed)**
+File `spark_processor_fixed.py` sẽ **tự động tìm Java** và set JAVA_HOME.
+
+```bash
+python spark_processor_fixed.py
+```
+
+#### **Cách 2: Thủ công (nếu cách 1 không hoạt động)**
+
+**Trên Windows PowerShell:**
+```powershell
+# Set JAVA_HOME
+$env:JAVA_HOME = "C:\Program Files\Java\jdk-11.0.XX"  # Thay XX bằng version của bạn
+
+# Xác nhận
+echo $env:JAVA_HOME
+```
+
+**Hoặc set vĩnh viễn (Environment Variables):**
+1. Mở **Settings** > **System** > **Advanced system settings**
+2. Click **Environment Variables**
+3. Thêm variable mới:
+   - **Variable name:** `JAVA_HOME`
+   - **Variable value:** `C:\Program Files\Java\jdk-11.0.XX`
+4. Restart PowerShell hoặc IDE
+
+---
+
+### **Bước 3: Chạy Spark**
+
+```bash
+# Cách 1: Dùng file fixed (tự động tìm Java)
+python spark_processor_fixed.py
+
+# Cách 2: Dùng file gốc (sau khi set JAVA_HOME)
+python spark_processor.py
+```
+
+---
+
+## 🎯 LỖI THƯỜNG GẶP
+
+| Lỗi | Nguyên nhân | Giải pháp |
+|-----|-----------|----------|
+| `java: command not found` | Java chưa cài | Cài JDK 8+ |
+| `JAVA_HOME` undefined | Không set env variable | Set JAVA_HOME |
+| `Java gateway process exited` | Java version cũ | Nâng cấp lên Java 11+ |
+| `Port number not sent` | Lỗi startup Java | Xóa `HADOOP_HOME` env var |
+
+---
+
+## 📊 KIỂM TRA CẤU HÌNH
+
+Chạy lệnh này để xác nhận:
+
+```powershell
+# 1. Kiểm tra Java
+java -version
+
+# 2. Kiểm tra JAVA_HOME
+$env:JAVA_HOME
+
+# 3. Kiểm tra đường dẫn Java
+Get-ChildItem $env:JAVA_HOME
+
+# 4. Test Spark (chỉ import)
+python -c "from pyspark.sql import SparkSession; print('✅ Spark OK')"
+```
+
+---
+
+## 💡 TIP
+
+- File `spark_processor_fixed.py` **tích hợp sẵn** auto-detect Java
+- Không cần set JAVA_HOME nếu Java nằm trong PATH
+- Nếu lỗi vẫn tồn tại, xóa `HADOOP_HOME` environment variable
