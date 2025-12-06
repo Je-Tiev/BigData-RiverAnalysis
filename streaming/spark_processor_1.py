@@ -4,13 +4,58 @@ from pyspark.sql import SparkSession
 from pyspark.sql.functions import from_json, col, when, from_unixtime, to_timestamp
 from pyspark.sql.types import StructType, StructField, StringType, DoubleType, TimestampType
 import os
+import platform
+
+# Bộ package Spark cần thiết khi chạy local trên Windows (thiếu JAR dựng sẵn)
+DEFAULT_SPARK_PACKAGES = ",".join([
+    "org.apache.spark:spark-sql-kafka-0-10_2.12:3.5.7",
+    "org.apache.spark:spark-token-provider-kafka-0-10_2.12:3.5.7",
+    "io.delta:delta-spark_2.12:3.2.0"
+])
+# Danh sách JAR có sẵn trong image Docker (nếu chạy trong container)
+DEFAULT_LOCAL_JARS = [
+    "/opt/spark/jars/spark-sql-kafka-0-10_2.12-3.5.7.jar",
+    "/opt/spark/jars/spark-token-provider-kafka-0-10_2.12-3.5.7.jar",
+    "/opt/spark/jars/kafka-clients-3.6.1.jar",
+    "/opt/spark/jars/delta-spark_2.12-3.2.0.jar",
+]
 
 # 1. Khởi tạo Spark Session
-# Lưu ý: Cấu hình 'spark.jars.packages' cần thiết để Spark hiểu được Kafka
-spark = SparkSession.builder \
+# Khởi tạo biến môi trường Hadoop cho Windows để tránh lỗi thiếu HADOOP_HOME / winutils.exe
+if platform.system() == "Windows":
+    # Ưu tiên dùng biến môi trường đã có; nếu chưa có thì gợi ý đường dẫn mặc định
+    hadoop_home = os.environ.get("HADOOP_HOME") or r"C:\hadoop\hadoop-3.3.2"
+    os.environ["HADOOP_HOME"] = hadoop_home
+    os.environ["hadoop.home.dir"] = hadoop_home
+    bin_path = os.path.join(hadoop_home, "bin")
+    if bin_path not in os.environ.get("PATH", ""):
+        os.environ["PATH"] = os.environ.get("PATH", "") + ";" + bin_path
+
+extra_packages = os.getenv("SPARK_EXTRA_PACKAGES")
+if platform.system() == "Windows" and not extra_packages:
+    # Khi phát triển local cần tự tải package Kafka + Delta
+    extra_packages = DEFAULT_SPARK_PACKAGES
+
+builder = SparkSession.builder \
     .appName("RiverQualityStreaming") \
-    .config("spark.jars.packages", "org.apache.spark:spark-sql-kafka-0-10_2.12:3.3.0") \
-    .getOrCreate()
+    .config("spark.sql.extensions", "io.delta.sql.DeltaSparkSessionExtension") \
+    .config("spark.sql.catalog.spark_catalog", "org.apache.spark.sql.delta.catalog.DeltaCatalog") \
+    .config("spark.driver.extraJavaOptions", f"-Dhadoop.home.dir={os.environ.get('HADOOP_HOME', '')}") \
+    .config("spark.executor.extraJavaOptions", f"-Dhadoop.home.dir={os.environ.get('HADOOP_HOME', '')}")
+
+if extra_packages:
+    builder = builder.config("spark.jars.packages", extra_packages)
+
+extra_jars = os.getenv("SPARK_EXTRA_JARS")
+if extra_jars:
+    jar_candidates = [p.strip() for p in extra_jars.split(",") if p.strip()]
+else:
+    jar_candidates = DEFAULT_LOCAL_JARS
+local_jars = [path for path in jar_candidates if os.path.exists(path)]
+if local_jars:
+    builder = builder.config("spark.jars", ",".join(local_jars))
+
+spark = builder.getOrCreate()
 
 spark.sparkContext.setLogLevel("WARN")
 
@@ -28,7 +73,7 @@ schema = StructType([
 # 3. Đọc dữ liệu từ Kafka (Read Stream)
 # KAFKA_BOOTSTRAP_SERVERS nên để là biến môi trường hoặc config file sau này
 
-kafka_bootstrap = os.getenv("KAFKA_BOOTSTRAP", "localhost:9092")
+kafka_bootstrap = os.getenv("KAFKA_BOOTSTRAP", "kafka-broker:19092")
 topic = os.getenv("KAFKA_TOPIC", "river-quality")
 
 raw_df = spark.readStream \
@@ -71,19 +116,24 @@ final_df = clean_df.withColumn(
 )
 # 5. Xuất dữ liệu (Write Stream) - Test ra Console trước
 # Khi hệ thống ổn định sẽ đổi sang format "delta" để ghi vào MinIO
-# Sink: Delta example with checkpoint and partitioning
+# Sink: Delta mặc định, có thể đổi sang console bằng biến môi trường
 checkpoint = os.getenv("DELTA_CHECKPOINT", "/tmp/delta/river_checkpoints")
 out_path = os.getenv("DELTA_OUTPUT", "/tmp/delta/river_data")
-query = final_df.writeStream \
-    .format("delta") \
-    .outputMode("append") \
-    .option("checkpointLocation", checkpoint) \
-    .partitionBy("station_id") \
-    .start(out_path)
-# query = final_df.writeStream \
-#     .format("console") \
-#     .outputMode("append") \
-#     .option("truncate", False) \
-#     .start()
-print(">>> Streaming job started...")
+sink_format = os.getenv("STREAM_SINK_FORMAT", "delta").lower()
+
+if sink_format == "console":
+    query = final_df.writeStream \
+        .format("console") \
+        .outputMode("append") \
+        .option("truncate", False) \
+        .start()
+else:
+    query = final_df.writeStream \
+        .format("delta") \
+        .outputMode("append") \
+        .option("checkpointLocation", checkpoint) \
+        .partitionBy("station_id") \
+        .start(out_path)
+
+print(f">>> Streaming job started with sink={sink_format} ...")
 query.awaitTermination()

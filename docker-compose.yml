@@ -1,0 +1,187 @@
+x-spark-common: &spark-common
+    build:
+        context: .
+        dockerfile: Dockerfile.spark
+    image: spark-custom:3.5.7
+    volumes:
+        - ./streaming:/opt/jobs
+        - spark_delta:/opt/spark-data
+    networks:
+        - iot-network
+    restart: always
+services:
+    # ============================
+    # Kafka Controller
+    # ============================
+    kafka-controller:
+        image: apache/kafka:4.0.1
+        container_name: kafka-controller
+        environment:
+            KAFKA_NODE_ID: 1
+            KAFKA_PROCESS_ROLES: controller
+            KAFKA_LISTENERS: CONTROLLER://:9093
+            KAFKA_INTER_BROKER_LISTENER_NAME: PLAINTEXT
+            KAFKA_CONTROLLER_LISTENER_NAMES: CONTROLLER
+            KAFKA_CONTROLLER_QUORUM_VOTERS: 1@kafka-controller:9093
+            KAFKA_GROUP_INITIAL_REBALANCE_DELAY_MS: 0
+        volumes:
+            - kafka_controller_data:/var/lib/kafka/data
+        networks:
+            - iot-network
+        restart: always
+
+    # ============================
+    # Kafka Broker Node
+    # ============================
+    kafka-broker:
+        image: apache/kafka:4.0.1
+        container_name: kafka-broker
+        ports:
+            - 29092:9092
+        environment:
+            KAFKA_NODE_ID: 4
+            KAFKA_PROCESS_ROLES: broker
+            KAFKA_LISTENERS: 'PLAINTEXT://:19092,PLAINTEXT_HOST://:9092'
+            KAFKA_ADVERTISED_LISTENERS: 'PLAINTEXT://kafka-broker:19092,PLAINTEXT_HOST://localhost:29092'
+            KAFKA_INTER_BROKER_LISTENER_NAME: PLAINTEXT
+            KAFKA_CONTROLLER_LISTENER_NAMES: CONTROLLER
+            KAFKA_LISTENER_SECURITY_PROTOCOL_MAP: CONTROLLER:PLAINTEXT,PLAINTEXT:PLAINTEXT,PLAINTEXT_HOST:PLAINTEXT
+            KAFKA_CONTROLLER_QUORUM_VOTERS: 1@kafka-controller:9093
+            KAFKA_GROUP_INITIAL_REBALANCE_DELAY_MS: 0
+        depends_on:
+            - kafka-controller
+        networks:
+            - iot-network
+        restart: always
+
+    # ============================
+    # Kafka UI
+    # ============================
+    kafka-ui:
+        container_name: kafka-ui
+        image: provectuslabs/kafka-ui:latest
+        ports:
+            - '8080:8080'
+        environment:
+            - KAFKA_CLUSTERS_0_NAME=Hello
+            - KAFKA_CLUSTERS_0_BOOTSTRAP_SERVERS=kafka-broker:19092
+        depends_on:
+            - kafka-broker
+        networks:
+            - iot-network
+        restart: always
+
+    # ============================
+    # MinIO
+    # ============================
+    minio:
+        image: minio/minio:latest
+        container_name: minio
+        command: server /data --console-address :9001
+        ports:
+            - '9000:9000'
+            - '30001:9001'
+        environment:
+            MINIO_ROOT_USER: admin
+            MINIO_ROOT_PASSWORD: password123
+        volumes:
+            - minio_data:/data
+        networks:
+            - iot-network
+        restart: always
+
+    # ============================
+    # MongoDB
+    # ============================
+    mongodb:
+        image: mongo:5.0
+        container_name: mongodb
+        ports:
+            - '27017:27017'
+        environment:
+            MONGO_INITDB_ROOT_USERNAME: root
+            MONGO_INITDB_ROOT_PASSWORD: password123
+        volumes:
+            - mongo_data:/data/db
+        networks:
+            - iot-network
+        restart: always
+
+    # ============================
+    # Spark Master
+    # ============================
+    spark-master:
+        <<: *spark-common
+        container_name: spark-master
+        command: >
+            /opt/spark/bin/spark-class org.apache.spark.deploy.master.Master
+            --host spark-master
+            --port 7077
+            --webui-port 8080
+        environment:
+            SPARK_MASTER_WEBUI_PORT: 8080
+            KAFKA_BOOTSTRAP: kafka-broker:19092
+            KAFKA_TOPIC: river-quality
+            DELTA_CHECKPOINT: /opt/spark-data/checkpoints
+            DELTA_OUTPUT: /opt/spark-data/delta
+            STREAM_SINK_FORMAT: delta
+            SPARK_EXTRA_PACKAGES: ''
+        ports:
+            - '7077:7077'
+            - '9090:8080'
+        volumes:
+            - spark_data:/opt/spark/work-dir
+            - spark_delta:/opt/spark-data
+            - ./streaming:/opt/jobs
+
+    # ============================
+    # Spark Worker
+    # ============================
+    spark-worker:
+        <<: *spark-common
+        container_name: spark-worker
+        command: >
+            /opt/spark/bin/spark-class org.apache.spark.deploy.worker.Worker
+            spark://spark-master:7077
+        environment:
+            SPARK_WORKER_CORES: 2
+            SPARK_WORKER_MEMORY: 2G
+            SPARK_WORKER_WEBUI_PORT: 8081
+            KAFKA_BOOTSTRAP: kafka-broker:19092
+            KAFKA_TOPIC: river-quality
+            DELTA_CHECKPOINT: /opt/spark-data/checkpoints
+            DELTA_OUTPUT: /opt/spark-data/delta
+            STREAM_SINK_FORMAT: delta
+            SPARK_EXTRA_PACKAGES: ''
+        ports:
+            - '9091:8081'
+        depends_on:
+            - spark-master
+
+    # ============================
+    # Grafana
+    # ============================
+    grafana:
+        image: grafana/grafana:latest
+        container_name: grafana
+        ports:
+            - '30003:3000'
+        environment:
+            GF_SECURITY_ADMIN_PASSWORD: admin123
+        networks:
+            - iot-network
+        restart: always
+
+# ============================
+# Networks & Volumes
+# ============================
+networks:
+    iot-network:
+        driver: bridge
+
+volumes:
+    minio_data:
+    mongo_data:
+    kafka_controller_data:
+    spark_data:
+    spark_delta:
