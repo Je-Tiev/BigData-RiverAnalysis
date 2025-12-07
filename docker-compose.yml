@@ -108,6 +108,43 @@ services:
         restart: always
 
     # ============================
+    # Mongo Express (web UI)
+    # ============================
+    mongo-express:
+        image: mongo-express:1.0.0
+        container_name: mongo-express
+        restart: always
+        ports:
+            - '8081:8081'
+        environment:
+            ME_CONFIG_MONGODB_ADMINUSERNAME: root
+            ME_CONFIG_MONGODB_ADMINPASSWORD: password123
+            ME_CONFIG_MONGODB_SERVER: mongodb
+        depends_on:
+            - mongodb
+        networks:
+            - iot-network
+
+    # ============================
+    # MongoDB API (FastAPI)
+    # ============================
+    mongo_api:
+        build:
+            context: ./Docker/mongo_api
+        container_name: mongo_api
+        ports:
+            - '5000:8000'
+        environment:
+            - MONGO_URI=mongodb://root:password123@mongodb:27017/?authSource=admin
+        volumes:
+            - ./:/app/data:ro
+        depends_on:
+            - mongodb
+        networks:
+            - iot-network
+        restart: always
+
+    # ============================
     # Spark Master
     # ============================
     spark-master:
@@ -126,6 +163,9 @@ services:
             DELTA_OUTPUT: /opt/spark-data/delta
             STREAM_SINK_FORMAT: delta
             SPARK_EXTRA_PACKAGES: ''
+            AWS_ACCESS_KEY_ID: minioadmin
+            AWS_SECRET_ACCESS_KEY: minioadmin
+            AWS_REGION: us-east-1
         ports:
             - '7077:7077'
             - '9090:8080'
@@ -133,6 +173,7 @@ services:
             - spark_data:/opt/spark/work-dir
             - spark_delta:/opt/spark-data
             - ./streaming:/opt/jobs
+            - ./:/data:ro
 
     # ============================
     # Spark Worker
@@ -153,10 +194,15 @@ services:
             DELTA_OUTPUT: /opt/spark-data/delta
             STREAM_SINK_FORMAT: delta
             SPARK_EXTRA_PACKAGES: ''
+            AWS_ACCESS_KEY_ID: minioadmin
+            AWS_SECRET_ACCESS_KEY: minioadmin
+            AWS_REGION: us-east-1
         ports:
             - '9091:8081'
         depends_on:
             - spark-master
+        volumes:
+            - ./:/data:ro
 
     # ============================
     # Grafana
@@ -168,6 +214,41 @@ services:
             - '30003:3000'
         environment:
             GF_SECURITY_ADMIN_PASSWORD: admin123
+        networks:
+            - iot-network
+        restart: always
+
+    # ============================
+    # PostgreSQL (serving / analytics)
+    # ============================
+    postgres:
+        image: postgres:15
+        container_name: postgres
+        environment:
+            POSTGRES_USER: river
+            POSTGRES_PASSWORD: riverpass
+            POSTGRES_DB: riverdb
+        ports:
+            - '5432:5432'
+        volumes:
+            - pgdata:/var/lib/postgresql/data
+        networks:
+            - iot-network
+        restart: always
+
+    # ============================
+    # pgAdmin (optional web UI)
+    # ============================
+    pgadmin:
+        image: dpage/pgadmin4:latest
+        container_name: pgadmin
+        environment:
+            PGADMIN_DEFAULT_EMAIL: admin@local
+            PGADMIN_DEFAULT_PASSWORD: admin
+        ports:
+            - '5050:80'
+        depends_on:
+            - postgres
         networks:
             - iot-network
         restart: always
@@ -185,3 +266,4 @@ volumes:
     kafka_controller_data:
     spark_data:
     spark_delta:
+    pgdata:
