@@ -7,8 +7,8 @@ from kafka import KafkaProducer
 
 # cai dat kafka
 KAFKA_SERVER = 'localhost:29092' 
-KAFKA_TOPIC = 'river_sensors'
-DELAY_SECONDS = 1 
+KAFKA_TOPIC = 'river-quality'
+DELAY_SECONDS = 1
 
 # lay duong dan day du den file nay
 script_dir = os.path.dirname(os.path.abspath(__file__))

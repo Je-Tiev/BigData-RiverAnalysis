@@ -1,0 +1,28 @@
+FROM apache/spark:3.5.0-scala2.12-java11-python3-ubuntu
+
+USER root
+
+RUN apt-get update && apt-get install -y wget curl && rm -rf /var/lib/apt/lists/*
+
+# Download tất cả JAR dependencies cần thiết
+RUN cd /opt/spark/jars && \
+    # Hadoop AWS
+    wget https://repo1.maven.org/maven2/org/apache/hadoop/hadoop-aws/3.3.4/hadoop-aws-3.3.4.jar && \
+    wget https://repo1.maven.org/maven2/com/amazonaws/aws-java-sdk-bundle/1.12.262/aws-java-sdk-bundle-1.12.262.jar && \
+    # Kafka connector
+    wget https://repo1.maven.org/maven2/org/apache/spark/spark-sql-kafka-0-10_2.12/3.5.0/spark-sql-kafka-0-10_2.12-3.5.0.jar && \
+    wget https://repo1.maven.org/maven2/org/apache/kafka/kafka-clients/3.4.1/kafka-clients-3.4.1.jar && \
+    wget https://repo1.maven.org/maven2/org/apache/commons/commons-pool2/2.11.1/commons-pool2-2.11.1.jar && \
+    wget https://repo1.maven.org/maven2/org/apache/spark/spark-token-provider-kafka-0-10_2.12/3.5.0/spark-token-provider-kafka-0-10_2.12-3.5.0.jar && \
+    # MongoDB connector
+    wget https://repo1.maven.org/maven2/org/mongodb/spark/mongo-spark-connector_2.12/10.2.0/mongo-spark-connector_2.12-10.2.0.jar && \
+    wget https://repo1.maven.org/maven2/org/mongodb/bson/4.10.2/bson-4.10.2.jar && \
+    wget https://repo1.maven.org/maven2/org/mongodb/mongodb-driver-core/4.10.2/mongodb-driver-core-4.10.2.jar && \
+    wget https://repo1.maven.org/maven2/org/mongodb/mongodb-driver-sync/4.10.2/mongodb-driver-sync-4.10.2.jar
+
+# Tạo thư mục và cấp quyền
+RUN mkdir -p /opt/jobs /opt/spark-data/checkpoints /home/spark/.ivy2/cache && \
+    chmod -R 777 /opt/spark-data /home/spark/.ivy2
+
+USER spark
+WORKDIR /opt/spark
