@@ -118,19 +118,28 @@ aggregated_metrics = watermarked_stream \
 
 # ===== FUNCTION GHI VÀO MONGODB =====
 def write_to_mongodb(batch_df, batch_id):
-    """Ghi từng batch vào MongoDB"""
-    if batch_df.count() > 0:
-        print(f"📝 Batch {batch_id}: Đang ghi {batch_df.count()} records vào MongoDB...")
+    """Ghi từng batch vào MongoDB using native connector"""
+    row_count = batch_df.count()
+    
+    if row_count > 0:
+        print(f"📝 Batch {batch_id}: Đang ghi {row_count} records vào MongoDB...")
         
-        batch_df.write \
-            .format("mongodb") \
-            .mode("append") \
-            .option("connection.uri", MONGODB_URI) \
-            .option("database", MONGODB_DATABASE) \
-            .option("collection", MONGODB_COLLECTION) \
-            .save()
-        
-        print(f"✅ Batch {batch_id}: Đã ghi thành công!")
+        try:
+            # Write directly with connector - simpler and more reliable
+            batch_df.write \
+                .format("mongodb") \
+                .mode("append") \
+                .option("connection.uri", MONGODB_URI) \
+                .option("database", MONGODB_DATABASE) \
+                .option("collection", MONGODB_COLLECTION) \
+                .save()
+            
+            print(f"✅ Batch {batch_id}: Đã ghi thành công {row_count} records!")
+            
+        except Exception as e:
+            print(f"❌ Batch {batch_id}: Lỗi khi ghi - {str(e)}")
+            # Log but don't fail the stream
+            
     else:
         print(f"⚠️  Batch {batch_id}: Không có dữ liệu để ghi")
 
