@@ -19,9 +19,6 @@ CHECKPOINT_DIR = os.environ.get('CHECKPOINT_DIR', '/opt/spark-data/checkpoints/m
 # ===== KHỞI TẠO SPARK =====
 spark = SparkSession.builder \
     .appName("WaterQuality_to_MinIO") \
-    .config("spark.jars.packages", 
-            "org.apache.spark:spark-sql-kafka-0-10_2.12:3.5.0,"
-            "org.apache.hadoop:hadoop-aws:3.3.4") \
     .config("spark.hadoop.fs.s3a.endpoint", f"http://{MINIO_ENDPOINT}") \
     .config("spark.hadoop.fs.s3a.access.key", MINIO_ACCESS_KEY) \
     .config("spark.hadoop.fs.s3a.secret.key", MINIO_SECRET_KEY) \

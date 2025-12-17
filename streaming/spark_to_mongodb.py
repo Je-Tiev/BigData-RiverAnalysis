@@ -4,10 +4,11 @@ from pyspark.sql.functions import (
     when, current_timestamp, expr
 )
 from pyspark.sql.types import StructType, StructField, StringType, DoubleType
+import os
 
 # ===== CẤU HÌNH =====
 KAFKA_SERVER = os.environ.get('KAFKA_SERVER', 'kafka-broker:19092')
-KAFKA_TOPIC = os.environ.get('KAFKA_TOPIC', 'river_sensors')
+KAFKA_TOPIC = os.environ.get('KAFKA_TOPIC', 'river-quality')
 
 # MongoDB: use docker-compose credentials by default
 MONGODB_URI = os.environ.get('MONGODB_URI', 'mongodb://root:password123@mongodb:27017/?authSource=admin')
@@ -18,9 +19,6 @@ CHECKPOINT_DIR = os.environ.get('CHECKPOINT_DIR', '/opt/spark-data/checkpoints/m
 # ===== KHỞI TẠO SPARK =====
 spark = SparkSession.builder \
     .appName("WaterQuality_to_MongoDB") \
-    .config("spark.jars.packages",
-            "org.apache.spark:spark-sql-kafka-0-10_2.12:3.5.0,"
-            "org.mongodb.spark:mongo-spark-connector_2.12:10.2.0") \
     .config("spark.mongodb.write.connection.uri", MONGODB_URI) \
     .config("spark.mongodb.write.database", MONGODB_DATABASE) \
     .config("spark.mongodb.write.collection", MONGODB_COLLECTION) \

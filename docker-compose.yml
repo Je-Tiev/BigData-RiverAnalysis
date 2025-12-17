@@ -61,7 +61,7 @@ services:
         container_name: kafka-ui
         image: provectuslabs/kafka-ui:latest
         ports:
-            - '8080:8080'
+            - '8082:8080'
         environment:
             - KAFKA_CLUSTERS_0_NAME=Hello
             - KAFKA_CLUSTERS_0_BOOTSTRAP_SERVERS=kafka-broker:19092
@@ -108,6 +108,26 @@ services:
         restart: always
 
     # ============================
+    # Mongo Express (MongoDB UI)
+    # ============================
+    mongo-express:
+        image: mongo-express:latest
+        container_name: mongo-express
+        ports:
+        - '30008:8081'
+        environment:
+            ME_CONFIG_MONGODB_ADMINUSERNAME: root
+            ME_CONFIG_MONGODB_ADMINPASSWORD: password123
+            ME_CONFIG_MONGODB_URL: mongodb://root:password123@mongodb:27017/
+            ME_CONFIG_BASICAUTH_USERNAME: admin
+            ME_CONFIG_BASICAUTH_PASSWORD: admin123
+        depends_on:
+            - mongodb
+        networks:
+            - iot-network
+        restart: always
+
+    # ============================
     # Spark Master
     # ============================
     spark-master:
@@ -125,7 +145,6 @@ services:
             DELTA_CHECKPOINT: /opt/spark-data/checkpoints
             DELTA_OUTPUT: /opt/spark-data/delta
             STREAM_SINK_FORMAT: delta
-            SPARK_EXTRA_PACKAGES: ''
         ports:
             - '7077:7077'
             - '9090:8080'
@@ -135,26 +154,48 @@ services:
             - ./streaming:/opt/jobs
 
     # ============================
-    # Spark Worker
+    # Spark Worker 1
     # ============================
-    spark-worker:
+    spark-worker-1:
         <<: *spark-common
-        container_name: spark-worker
+        container_name: spark-worker-1
         command: >
             /opt/spark/bin/spark-class org.apache.spark.deploy.worker.Worker
             spark://spark-master:7077
         environment:
-            SPARK_WORKER_CORES: 2
-            SPARK_WORKER_MEMORY: 2G
+            SPARK_WORKER_CORES: 4
+            SPARK_WORKER_MEMORY: 4G
             SPARK_WORKER_WEBUI_PORT: 8081
             KAFKA_BOOTSTRAP: kafka-broker:19092
             KAFKA_TOPIC: river-quality
             DELTA_CHECKPOINT: /opt/spark-data/checkpoints
             DELTA_OUTPUT: /opt/spark-data/delta
             STREAM_SINK_FORMAT: delta
-            SPARK_EXTRA_PACKAGES: ''
         ports:
             - '9091:8081'
+        depends_on:
+            - spark-master
+
+    # ============================
+    # Spark Worker 2
+    # ============================
+    spark-worker-2:
+        <<: *spark-common
+        container_name: spark-worker-2
+        command: >
+            /opt/spark/bin/spark-class org.apache.spark.deploy.worker.Worker
+            spark://spark-master:7077
+        environment:
+            SPARK_WORKER_CORES: 4
+            SPARK_WORKER_MEMORY: 4G
+            SPARK_WORKER_WEBUI_PORT: 8082
+            KAFKA_BOOTSTRAP: kafka-broker:19092
+            KAFKA_TOPIC: river-quality
+            DELTA_CHECKPOINT: /opt/spark-data/checkpoints
+            DELTA_OUTPUT: /opt/spark-data/delta
+            STREAM_SINK_FORMAT: delta
+        ports:
+            - '9092:8082'
         depends_on:
             - spark-master
 
