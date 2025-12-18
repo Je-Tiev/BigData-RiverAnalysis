@@ -176,14 +176,14 @@ GỬI: [Time: 2020-02-01, Sông: Don River]
 
 ```bash
 # Linux/Mac
-docker exec -it spark-master /opt/spark/bin/spark-submit \
-  --master spark://spark-master:7077 \
+docker exec -it spark-master-minio /opt/spark/bin/spark-submit \
+  --master spark://spark-master-minio:7077 \
   --packages org.apache.spark:spark-sql-kafka-0-10_2.12:3.5.0,org.apache.hadoop:hadoop-aws:3.3.4 \
   /opt/jobs/spark_to_minio.py
 
 # Windows PowerShell
-docker exec -it spark-master /opt/spark/bin/spark-submit `
-  --master spark://spark-master:7077 `
+docker exec -it spark-master-minio /opt/spark/bin/spark-submit `
+  --master spark://spark-master-minio:7077 `
   --packages org.apache.spark:spark-sql-kafka-0-10_2.12:3.5.0,org.apache.hadoop:hadoop-aws:3.3.4 `
   /opt/jobs/spark_to_minio.py
 ```
@@ -212,14 +212,14 @@ docker exec -it spark-master /opt/spark/bin/spark-submit `
 
 ```bash
 # Linux/Mac
-docker exec -it spark-master /opt/spark/bin/spark-submit \
-  --master spark://spark-master:7077 \
+docker exec -it spark-master-mongodb /opt/spark/bin/spark-submit \
+  --master spark://spark-master-mongodb:7078 \
   --packages org.apache.spark:spark-sql-kafka-0-10_2.12:3.5.0,org.mongodb.spark:mongo-spark-connector_2.12:10.2.0 \
   /opt/jobs/spark_to_mongodb.py
 
 # Windows PowerShell
-docker exec -it spark-master /opt/spark/bin/spark-submit `
-  --master spark://spark-master:7077 `
+docker exec -it spark-master-mongodb /opt/spark/bin/spark-submit `
+  --master spark://spark-master-mongodb:7078 `
   --packages org.apache.spark:spark-sql-kafka-0-10_2.12:3.5.0,org.mongodb.spark:mongo-spark-connector_2.12:10.2.0 `
   /opt/jobs/spark_to_mongodb.py
 ```

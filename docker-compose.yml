@@ -128,14 +128,14 @@ services:
         restart: always
 
     # ============================
-    # Spark Master
+    # Spark Master - MinIO
     # ============================
-    spark-master:
+    spark-master-minio:
         <<: *spark-common
-        container_name: spark-master
+        container_name: spark-master-minio
         command: >
             /opt/spark/bin/spark-class org.apache.spark.deploy.master.Master
-            --host spark-master
+            --host spark-master-minio
             --port 7077
             --webui-port 8080
         environment:
@@ -154,14 +154,40 @@ services:
             - ./streaming:/opt/jobs
 
     # ============================
-    # Spark Worker 1
+    # Spark Master - MongoDB
     # ============================
-    spark-worker-1:
+    spark-master-mongodb:
         <<: *spark-common
-        container_name: spark-worker-1
+        container_name: spark-master-mongodb
+        command: >
+            /opt/spark/bin/spark-class org.apache.spark.deploy.master.Master
+            --host spark-master-mongodb
+            --port 7078
+            --webui-port 8080
+        environment:
+            SPARK_MASTER_WEBUI_PORT: 8080
+            KAFKA_BOOTSTRAP: kafka-broker:19092
+            KAFKA_TOPIC: river-quality
+            DELTA_CHECKPOINT: /opt/spark-data/checkpoints
+            DELTA_OUTPUT: /opt/spark-data/delta
+            STREAM_SINK_FORMAT: delta
+        ports:
+            - '7078:7078'
+            - '9093:8080'
+        volumes:
+            - spark_data:/opt/spark/work-dir
+            - spark_delta:/opt/spark-data
+            - ./streaming:/opt/jobs
+
+    # ============================
+    # Spark Worker - MinIO
+    # ============================
+    spark-worker-minio:
+        <<: *spark-common
+        container_name: spark-worker-minio
         command: >
             /opt/spark/bin/spark-class org.apache.spark.deploy.worker.Worker
-            spark://spark-master:7077
+            spark://spark-master-minio:7077
         environment:
             SPARK_WORKER_CORES: 4
             SPARK_WORKER_MEMORY: 4G
@@ -174,17 +200,17 @@ services:
         ports:
             - '9091:8081'
         depends_on:
-            - spark-master
+            - spark-master-minio
 
     # ============================
-    # Spark Worker 2
+    # Spark Worker - MongoDB
     # ============================
-    spark-worker-2:
+    spark-worker-mongodb:
         <<: *spark-common
-        container_name: spark-worker-2
+        container_name: spark-worker-mongodb
         command: >
             /opt/spark/bin/spark-class org.apache.spark.deploy.worker.Worker
-            spark://spark-master:7077
+            spark://spark-master-mongodb:7078
         environment:
             SPARK_WORKER_CORES: 4
             SPARK_WORKER_MEMORY: 4G
@@ -195,9 +221,9 @@ services:
             DELTA_OUTPUT: /opt/spark-data/delta
             STREAM_SINK_FORMAT: delta
         ports:
-            - '9092:8082'
+            - '9094:8082'
         depends_on:
-            - spark-master
+            - spark-master-mongodb
 
     # ============================
     # Grafana
