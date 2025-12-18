@@ -1,0 +1,89 @@
+apiVersion: v1
+kind: Service
+metadata:
+  name: spark-master-mongodb
+  namespace: river-analysis
+spec:
+  type: ClusterIP
+  ports:
+    - port: 7078
+      targetPort: 7078
+      name: spark
+    - port: 8080
+      targetPort: 8080
+      name: webui
+  selector:
+    app: spark-master-mongodb
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: spark-master-mongodb
+  namespace: river-analysis
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: spark-master-mongodb
+  template:
+    metadata:
+      labels:
+        app: spark-master-mongodb
+    spec:
+      containers:
+      - name: spark-master
+        image: hiesu19/spark-custom:3.5.7
+        command:
+          - /opt/spark/bin/spark-class
+          - org.apache.spark.deploy.master.Master
+          - --host
+          - spark-master-mongodb
+          - --port
+          - "7078"
+          - --webui-port
+          - "8080"
+        ports:
+        - containerPort: 7078
+          name: spark
+        - containerPort: 8080
+          name: webui
+        env:
+        - name: SPARK_MASTER_WEBUI_PORT
+          value: "8080"
+        - name: KAFKA_BOOTSTRAP
+          value: "kafka-broker:19092"
+        - name: KAFKA_TOPIC
+          value: "river-quality"
+        - name: MONGODB_URI
+          value: "mongodb://root:password123@mongodb:27017/?authSource=admin"
+        - name: MONGODB_DATABASE
+          value: "water_quality"
+        - name: MONGODB_COLLECTION
+          value: "river_metrics"
+        volumeMounts:
+        - name: jobs
+          mountPath: /opt/jobs
+        - name: spark-data
+          mountPath: /opt/spark-data
+        resources:
+          requests:
+            memory: "1Gi"
+            cpu: "500m"
+          limits:
+            memory: "2Gi"
+            cpu: "1000m"
+      volumes:
+      - name: jobs
+        configMap:
+          name: spark-jobs
+      - name: spark-data
+        persistentVolumeClaim:
+          claimName: spark-data-mongodb
+      initContainers:
+      - name: wait-for-kafka
+        image: busybox:1.35
+        command: ['sh', '-c', 'until nc -z kafka-broker 19092; do echo waiting for kafka-broker; sleep 2; done;']
+      - name: wait-for-mongodb
+        image: busybox:1.35
+        command: ['sh', '-c', 'until nc -z mongodb 27017; do echo waiting for mongodb; sleep 2; done;']
+

@@ -1,0 +1,90 @@
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: spark-job-minio
+  namespace: river-analysis
+spec:
+  template:
+    spec:
+      restartPolicy: Never
+      containers:
+      - name: spark-submit
+        image: hiesu19/spark-custom:3.5.7
+        command:
+          - /opt/spark/bin/spark-submit
+          - --master
+          - spark://spark-master-minio:7077
+          - --packages
+          - org.apache.spark:spark-sql-kafka-0-10_2.12:3.5.0,org.apache.hadoop:hadoop-aws:3.3.4
+          - /opt/jobs/spark_to_minio.py
+        env:
+        - name: KAFKA_SERVER
+          value: "kafka-broker:19092"
+        - name: KAFKA_TOPIC
+          value: "river-quality"
+        - name: MINIO_ENDPOINT
+          value: "minio:9000"
+        - name: MINIO_ROOT_USER
+          value: "admin"
+        - name: MINIO_ROOT_PASSWORD
+          value: "password123"
+        - name: CHECKPOINT_DIR
+          value: "/opt/spark-data/checkpoints/minio_stream"
+        volumeMounts:
+        - name: jobs
+          mountPath: /opt/jobs
+        - name: spark-data
+          mountPath: /opt/spark-data
+      volumes:
+      - name: jobs
+        configMap:
+          name: spark-jobs
+      - name: spark-data
+        persistentVolumeClaim:
+          claimName: spark-data-minio
+---
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: spark-job-mongodb
+  namespace: river-analysis
+spec:
+  template:
+    spec:
+      restartPolicy: Never
+      containers:
+      - name: spark-submit
+        image: hiesu19/spark-custom:3.5.7
+        command:
+          - /opt/spark/bin/spark-submit
+          - --master
+          - spark://spark-master-mongodb:7078
+          - --packages
+          - org.apache.spark:spark-sql-kafka-0-10_2.12:3.5.0,org.mongodb.spark:mongo-spark-connector_2.12:10.2.0
+          - /opt/jobs/spark_to_mongodb.py
+        env:
+        - name: KAFKA_SERVER
+          value: "kafka-broker:19092"
+        - name: KAFKA_TOPIC
+          value: "river-quality"
+        - name: MONGODB_URI
+          value: "mongodb://root:password123@mongodb:27017/?authSource=admin"
+        - name: MONGODB_DATABASE
+          value: "water_quality"
+        - name: MONGODB_COLLECTION
+          value: "river_metrics"
+        - name: CHECKPOINT_DIR
+          value: "/opt/spark-data/checkpoints/mongodb_stream"
+        volumeMounts:
+        - name: jobs
+          mountPath: /opt/jobs
+        - name: spark-data
+          mountPath: /opt/spark-data
+      volumes:
+      - name: jobs
+        configMap:
+          name: spark-jobs
+      - name: spark-data
+        persistentVolumeClaim:
+          claimName: spark-data-mongodb
+

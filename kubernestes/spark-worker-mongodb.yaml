@@ -1,0 +1,66 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: spark-worker-mongodb
+  namespace: river-analysis
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app: spark-worker-mongodb
+  template:
+    metadata:
+      labels:
+        app: spark-worker-mongodb
+    spec:
+      containers:
+      - name: spark-worker
+        image: hiesu19/spark-custom:3.5.7
+        command:
+          - /opt/spark/bin/spark-class
+          - org.apache.spark.deploy.worker.Worker
+          - spark://spark-master-mongodb:7078
+        ports:
+        - containerPort: 8081
+          name: webui
+        env:
+        - name: SPARK_WORKER_CORES
+          value: "4"
+        - name: SPARK_WORKER_MEMORY
+          value: "4G"
+        - name: SPARK_WORKER_WEBUI_PORT
+          value: "8081"
+        - name: KAFKA_BOOTSTRAP
+          value: "kafka-broker:19092"
+        - name: KAFKA_TOPIC
+          value: "river-quality"
+        - name: MONGODB_URI
+          value: "mongodb://root:password123@mongodb:27017/?authSource=admin"
+        - name: MONGODB_DATABASE
+          value: "water_quality"
+        - name: MONGODB_COLLECTION
+          value: "river_metrics"
+        volumeMounts:
+        - name: jobs
+          mountPath: /opt/jobs
+        - name: spark-data
+          mountPath: /opt/spark-data
+        resources:
+          requests:
+            memory: "2Gi"
+            cpu: "1000m"
+          limits:
+            memory: "4Gi"
+            cpu: "2000m"
+      volumes:
+      - name: jobs
+        configMap:
+          name: spark-jobs
+      - name: spark-data
+        persistentVolumeClaim:
+          claimName: spark-data-mongodb
+      initContainers:
+      - name: wait-for-master
+        image: busybox:1.35
+        command: ['sh', '-c', 'until nc -z spark-master-mongodb 7078; do echo waiting for spark-master-mongodb; sleep 2; done;']
+

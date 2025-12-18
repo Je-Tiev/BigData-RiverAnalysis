@@ -1,0 +1,66 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: spark-worker-minio
+  namespace: river-analysis
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app: spark-worker-minio
+  template:
+    metadata:
+      labels:
+        app: spark-worker-minio
+    spec:
+      containers:
+      - name: spark-worker
+        image: hiesu19/spark-custom:3.5.7
+        command:
+          - /opt/spark/bin/spark-class
+          - org.apache.spark.deploy.worker.Worker
+          - spark://spark-master-minio:7077
+        ports:
+        - containerPort: 8081
+          name: webui
+        env:
+        - name: SPARK_WORKER_CORES
+          value: "4"
+        - name: SPARK_WORKER_MEMORY
+          value: "4G"
+        - name: SPARK_WORKER_WEBUI_PORT
+          value: "8081"
+        - name: KAFKA_BOOTSTRAP
+          value: "kafka-broker:19092"
+        - name: KAFKA_TOPIC
+          value: "river-quality"
+        - name: MINIO_ENDPOINT
+          value: "minio:9000"
+        - name: MINIO_ROOT_USER
+          value: "admin"
+        - name: MINIO_ROOT_PASSWORD
+          value: "password123"
+        volumeMounts:
+        - name: jobs
+          mountPath: /opt/jobs
+        - name: spark-data
+          mountPath: /opt/spark-data
+        resources:
+          requests:
+            memory: "2Gi"
+            cpu: "1000m"
+          limits:
+            memory: "4Gi"
+            cpu: "2000m"
+      volumes:
+      - name: jobs
+        configMap:
+          name: spark-jobs
+      - name: spark-data
+        persistentVolumeClaim:
+          claimName: spark-data-minio
+      initContainers:
+      - name: wait-for-master
+        image: busybox:1.35
+        command: ['sh', '-c', 'until nc -z spark-master-minio 7077; do echo waiting for spark-master-minio; sleep 2; done;']
+
