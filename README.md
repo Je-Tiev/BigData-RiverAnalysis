@@ -1,6 +1,6 @@
 #  Big Data River Quality Monitoring System
 
-Hệ thống giám sát chất lượng nước sông real-time sử dụng Kafka, Spark Streaming, MinIO và MongoDB.
+Hệ thống giám sát chất lượng nước sông real-time sử dụng Kafka, Spark Streaming, MinIO và InfluxDB.
 
 ---
 ## Mục tiêu
@@ -31,7 +31,7 @@ Hệ thống giám sát chất lượng nước sông real-time sử dụng Kafk
 
 ```
 CSV Data → Producer → Kafka → Spark Streaming → MinIO (Raw Data)
-                                               → MongoDB (Metrics)
+                                               → InfluxDB (Time-series Metrics)
 ```
 
 ### Các thành phần
@@ -43,7 +43,7 @@ CSV Data → Producer → Kafka → Spark Streaming → MinIO (Raw Data)
 | Spark Master | 9090 | Spark cluster master |
 | Spark Worker | 9091 | Spark executor |
 | MinIO | 30001 | Object storage (S3-compatible) |
-| MongoDB | 27017 | NoSQL database |
+| InfluxDB | 8086 | Time-series database |
 | Grafana | 30003 | Dashboard visualization |
 
 ---
@@ -206,33 +206,34 @@ docker exec -it spark-master-minio /opt/spark/bin/spark-submit `
 
 ---
 
-### Bước 6: Chạy Spark Job - Ghi vào MongoDB
+### Bước 6: Chạy Spark Job - Ghi vào InfluxDB
 
 **Mở terminal/PowerShell mới**
 
 ```bash
 # Linux/Mac
-docker exec -it spark-master-mongodb /opt/spark/bin/spark-submit \
-  --master spark://spark-master-mongodb:7078 \
-  --packages org.apache.spark:spark-sql-kafka-0-10_2.12:3.5.0,org.mongodb.spark:mongo-spark-connector_2.12:10.2.0 \
-  /opt/jobs/spark_to_mongodb.py
+docker exec -it spark-master-influxdb /opt/spark/bin/spark-submit \
+  --master spark://spark-master-influxdb:7078 \
+  -- deploy-mode client \
+  /opt/jobs/spark_to_influxdb.py
 
 # Windows PowerShell
-docker exec -it spark-master-mongodb /opt/spark/bin/spark-submit `
-  --master spark://spark-master-mongodb:7078 `
-  --packages org.apache.spark:spark-sql-kafka-0-10_2.12:3.5.0,org.mongodb.spark:mongo-spark-connector_2.12:10.2.0 `
-  /opt/jobs/spark_to_mongodb.py
+docker exec -it spark-master-influxdb /opt/spark/bin/spark-submit `
+  --master spark://spark-master-influxdb:7078 `
+  --deploy-mode client `
+  /opt/jobs/spark_to_influxdb.py
 ```
 
 **Log mong đợi:**
 
 ```
-✅ Đã khởi tạo Spark Session với MongoDB connector
+✅ Đã khởi tạo Spark Session cho InfluxDB
+🔗 InfluxDB URL: http://influxdb:8086
 📡 Đang kết nối tới Kafka topic: river_sensors...
-💾 Bắt đầu streaming metrics vào MongoDB: water_quality.river_metrics
+💾 Bắt đầu streaming metrics vào InfluxDB: water-quality.river-data
 🚀 Stream đang chạy...
 📊 Đang tính toán metrics theo cửa sổ 5 phút...
-🔍 Batch 0: Đang ghi 15 records vào MongoDB...
+🔍 Batch 0: Đang ghi 15 records vào InfluxDB...
 ✅ Batch 0: Đã ghi thành công!
 ```
 
@@ -249,6 +250,7 @@ docker exec -it spark-master-mongodb /opt/spark/bin/spark-submit `
 | Kafka UI | http://localhost:8080 | - |
 | Spark Master | http://localhost:9090 | - |
 | Spark Worker | http://localhost:9091 | - |
+| InfluxDB UI | http://localhost:8086 | admin / password123 |
 | MinIO Console | http://localhost:30001 | admin / password123 |
 | Grafana | http://localhost:30003 | admin / admin123 |
 
@@ -261,8 +263,7 @@ docker-compose logs -f
 
 # Logs của service cụ thể
 docker-compose logs -f spark-master
-docker-compose logs -f kafka-broker
-docker-compose logs -f mongodb
+docker-compose logs -f influxdb
 
 # Windows PowerShell
 # Logs tất cả services
@@ -271,7 +272,7 @@ docker-compose logs -f
 # Logs của service cụ thể
 docker-compose logs -f spark-master
 docker-compose logs -f kafka-broker
-docker-compose logs -f mongodb
+docker-compose logs -f influx-broker
 ```
 
 ### Kiểm tra resource usage
@@ -338,9 +339,9 @@ BIGDATA-RIVERANALYSIS/
 ├── kafka/
 │   ├── Dockerfile
 │   └── producer.py
-├── streaming/
+├── streaming
 │   ├── spark_to_minio.py
-│   └── spark_to_mongodb.py
+│   └── spark_to_influxdb.py
 ├── Dockerfile.spark              
 ├── docker-compose.yml
 ├── sort_the_source.py
