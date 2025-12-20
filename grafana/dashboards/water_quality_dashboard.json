@@ -1,0 +1,59 @@
+{
+    "id": null,
+    "title": "Water Quality Dashboard",
+    "tags": ["water", "quality", "influxdb"],
+    "timezone": "browser",
+    "panels": [
+      {
+        "id": 1,
+        "title": "Temperature Over Time",
+        "type": "timeseries",
+        "targets": [
+          {
+            "query": "from(bucket: \"river-data\") |> range(start: -1h) |> filter(fn: (r) => r._measurement == \"water_quality\" and r._field == \"temperature\")",
+            "refId": "A"
+          }
+        ],
+        "datasource": "InfluxDB",
+        "gridPos": {
+          "h": 8,
+          "w": 12,
+          "x": 0,
+          "y": 0
+        }
+      },
+      {
+        "id": 2,
+        "title": "pH Level Over Time",
+        "type": "timeseries",
+        "targets": [
+          {
+            "query": "from(bucket: \"river-data\") |> range(start: -1h) |> filter(fn: (r) => r._measurement == \"water_quality\" and r._field == \"pH\")",
+            "refId": "A"
+          }
+        ],
+        "datasource": "InfluxDB",
+        "gridPos": {
+          "h": 8,
+          "w": 12,
+          "x": 12,
+          "y": 0
+        }
+      }
+    ],
+    "time": {
+      "from": "now-1h",
+      "to": "now"
+    },
+    "timepicker": {},
+    "templating": {
+      "list": []
+    },
+    "annotations": {
+      "list": []
+    },
+    "refresh": "5s",
+    "schemaVersion": 27,
+    "version": 0,
+    "links": []
+}
