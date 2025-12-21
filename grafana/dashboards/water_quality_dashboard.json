@@ -1,59 +1,144 @@
 {
-    "id": null,
-    "title": "Water Quality Dashboard",
-    "tags": ["water", "quality", "influxdb"],
-    "timezone": "browser",
-    "panels": [
-      {
-        "id": 1,
-        "title": "Temperature Over Time",
-        "type": "timeseries",
-        "targets": [
-          {
-            "query": "from(bucket: \"river-data\") |> range(start: -1h) |> filter(fn: (r) => r._measurement == \"water_quality\" and r._field == \"temperature\")",
-            "refId": "A"
-          }
-        ],
-        "datasource": "InfluxDB",
-        "gridPos": {
-          "h": 8,
-          "w": 12,
-          "x": 0,
-          "y": 0
+  "id": null,
+  "title": "Water Quality Dashboard",
+  "tags": ["water", "quality", "influxdb"],
+  "timezone": "browser",
+  "panels": [
+    {
+      "id": 1,
+      "title": "Ammonia Over Time",
+      "type": "timeseries",
+      "targets": [
+        {
+          "query": "from(bucket: \"river-data\")\r\n  |> range(start: v.timeRangeStart, stop: v.timeRangeStop)\r\n  |> filter(fn: (r) => r[\"_field\"] == \"ammonia\")\r\n  |> aggregateWindow(every: v.windowPeriod, fn: mean, createEmpty: false)\r\n  |> yield(name: \"mean\")",
+          "refId": "A"
         }
+      ],
+      "datasource": "InfluxDB",
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 0,
+        "y": 0
+      }
+    },
+    {
+      "id": 2,
+      "title": "CCME Score Over Time",
+      "type": "timeseries",
+      "targets": [
+        {
+          "query": "from(bucket: \"river-data\")\r\n  |> range(start: v.timeRangeStart, stop: v.timeRangeStop)\r\n  |> filter(fn: (r) => r[\"_field\"] == \"ccme_score\")\r\n  |> aggregateWindow(every: v.windowPeriod, fn: last, createEmpty: false)\r\n  |> yield(name: \"last\")",
+          "refId": "A"
+        }
+      ],
+      "datasource": "InfluxDB",
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 12,
+        "y": 0
+      }
+    },
+
+    {
+      "id": 3,
+      "title": "Dissolved Oxygen Over Time",
+      "type": "timeseries",
+      "targets": [
+        {
+          "query": "from(bucket: \"river-data\")\n  |> range(start: v.timeRangeStart, stop: v.timeRangeStop)\n  |> filter(fn: (r) => r[\"_field\"] == \"dissolved_oxygen\")\n  |> aggregateWindow(every: v.windowPeriod, fn: mean, createEmpty: false)\n  |> yield(name: \"mean\")",
+          "refId": "A"
+        }
+      ],
+      "datasource": "InfluxDB",
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 0,
+        "y": 8
       },
-      {
-        "id": 2,
-        "title": "pH Level Over Time",
-        "type": "timeseries",
-        "targets": [
-          {
-            "query": "from(bucket: \"river-data\") |> range(start: -1h) |> filter(fn: (r) => r._measurement == \"water_quality\" and r._field == \"pH\")",
-            "refId": "A"
-          }
-        ],
-        "datasource": "InfluxDB",
-        "gridPos": {
-          "h": 8,
-          "w": 12,
-          "x": 12,
-          "y": 0
+      "fieldConfig": {
+        "defaults": {
+          "unit": "mg/L"
         }
       }
-    ],
-    "time": {
-      "from": "now-1h",
-      "to": "now"
     },
-    "timepicker": {},
-    "templating": {
-      "list": []
+    {
+      "id": 4,
+      "title": "Quality Label Distribution (%)",
+      "type": "piechart",
+      "pluginVersion": "12.3.0",
+      "datasource": {
+        "type": "influxdb",
+        "uid": "P951FEA4DE68E13C5"
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "query": "from(bucket: \"river-data\")\n  |> range(start: v.timeRangeStart, stop: v.timeRangeStop)\n  |> filter(fn: (r) =>\n    r[\"quality_label\"] == \"Good\" or\n    r[\"quality_label\"] == \"Fair\" or\n    r[\"quality_label\"] == \"Marginal\" or\n    r[\"quality_label\"] == \"Poor\"\n  )\n  |> group(columns: [\"quality_label\"])\n  |> count()\n  |> yield(name: \"count\")"
+        }
+      ],
+      "options": {
+        "legend": {
+          "displayMode": "list",
+          "placement": "bottom",
+          "showLegend": true
+        },
+        "pieType": "pie",
+        "reduceOptions": {
+          "calcs": ["last"],
+          "fields": "",
+          "values": false
+        },
+        "displayLabels": ["percent", "name"],
+        "tooltip": {
+          "mode": "single"
+        }
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "percent"
+        }
+      }
     },
-    "annotations": {
-      "list": []
-    },
-    "refresh": "5s",
-    "schemaVersion": 27,
-    "version": 0,
-    "links": []
+    {
+      "id": 5,
+      "title": "Hardness Over Time",
+      "type": "timeseries",
+      "targets": [
+        {
+          "query": "from(bucket: \"river-data\")\r\n  |> range(start: v.timeRangeStart, stop: v.timeRangeStop)\r\n  |> filter(fn: (r) => r[\"_field\"] == \"hardness\")\r\n  |> aggregateWindow(every: v.windowPeriod, fn: mean, createEmpty: false)\r\n  |> yield(name: \"mean\")",
+          "refId": "A"
+        }
+      ],
+      "datasource": "InfluxDB",
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 0,
+        "y": 8
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "mg/L as CaCO3"
+        }
+      }
+    }
+  ],
+  "time": {
+    "from": "now-20y",
+    "to": "now"
+  },
+  "timepicker": {},
+  "templating": {
+    "list": []
+  },
+  "annotations": {
+    "list": []
+  },
+  "refresh": "5s",
+  "schemaVersion": 27,
+  "version": 0,
+  "links": []
 }
