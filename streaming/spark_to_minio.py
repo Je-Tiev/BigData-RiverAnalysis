@@ -29,7 +29,7 @@ spark = SparkSession.builder \
 
 spark.sparkContext.setLogLevel("WARN")
 
-print("✅ Đã khởi tạo Spark Session với MinIO connector")
+print("✅Đã khởi tạo Spark Session với MinIO connector")
 
 # ===== ĐỊNH NGHĨA SCHEMA =====
 # Schema phải khớp chính xác với dữ liệu từ producer
@@ -48,11 +48,11 @@ schema = StructType([
 ])
 
 # ===== ĐỌC TỪ KAFKA =====
-print(f"📡 Đang kết nối tới Kafka topic: {KAFKA_TOPIC} (bootstrap: {KAFKA_SERVER})...")
-print(f"🔍 DEBUG - KAFKA_SERVER: {KAFKA_SERVER}")
-print(f"🔍 DEBUG - KAFKA_TOPIC: {KAFKA_TOPIC}")
-print(f"🔍 DEBUG - MINIO_ENDPOINT: {MINIO_ENDPOINT}")
-print(f"🔍 DEBUG - CHECKPOINT_DIR: {CHECKPOINT_DIR}")
+print(f"Đang kết nối tới Kafka topic: {KAFKA_TOPIC} (bootstrap: {KAFKA_SERVER})...")
+print(f"DEBUG - KAFKA_SERVER: {KAFKA_SERVER}")
+print(f"DEBUG - KAFKA_TOPIC: {KAFKA_TOPIC}")
+print(f"DEBUG - MINIO_ENDPOINT: {MINIO_ENDPOINT}")
+print(f"DEBUG - CHECKPOINT_DIR: {CHECKPOINT_DIR}")
 kafka_stream = spark \
     .readStream \
     .format("kafka") \
@@ -103,7 +103,7 @@ cleaned_stream = cleaned_stream.drop(
 # ===== GHI VÀO MINIO =====
 output_path = f"s3a://{MINIO_BUCKET}/raw_data"
 
-print(f"💾 Bắt đầu ghi streaming data vào MinIO: {output_path}")
+print(f"Bắt đầu ghi streaming data vào MinIO: {output_path}")
 
 query = cleaned_stream \
     .writeStream \
@@ -115,7 +115,7 @@ query = cleaned_stream \
     .trigger(processingTime='30 seconds') \
     .start()
 
-print("🚀 Stream đang chạy... Nhấn Ctrl+C để dừng")
+print("Stream đang chạy... Nhấn Ctrl+C để dừng")
 
 # ===== MONITOR =====
 try:
@@ -124,11 +124,11 @@ try:
         time.sleep(10)
         progress = query.lastProgress
         if progress:
-            print(f"⏱️  Batch: {progress['batchId']} | "
+            print(f"Batch: {progress['batchId']} | "
                   f"Input Rows: {progress['numInputRows']} | "
                   f"Processed: {progress.get('sink', {}).get('numOutputRows', 0)}")
 except KeyboardInterrupt:
-    print("\n⏹️  Đang dừng stream...")
+    print("\n⏹️Đang dừng stream...")
     query.stop()
     spark.stop()
-    print("✅ Đã đóng kết nối!")
+    print("✅Đã đóng kết nối!")

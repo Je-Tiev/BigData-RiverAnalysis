@@ -26,9 +26,9 @@ spark = SparkSession.builder \
 
 spark.sparkContext.setLogLevel("WARN")
 
-print("✅ Đã khởi tạo Spark Session cho InfluxDB")
-print(f"🔗 InfluxDB URL: {INFLUXDB_URL}")
-print(f"🏢 Organization: {INFLUXDB_ORG}")
+print("✅Đã khởi tạo Spark Session cho InfluxDB")
+print(f"InfluxDB URL: {INFLUXDB_URL}")
+print(f"Organization: {INFLUXDB_ORG}")
 print(f"🪣 Bucket: {INFLUXDB_BUCKET}")
 
 # ===== ĐỊNH NGHĨA SCHEMA =====
@@ -47,7 +47,7 @@ schema = StructType([
 ])
 
 # ===== ĐỌC TỪ KAFKA =====
-print(f"📡 Đang kết nối tới Kafka topic: {KAFKA_TOPIC} (bootstrap: {KAFKA_SERVER})...")
+print(f"Đang kết nối tới Kafka topic: {KAFKA_TOPIC} (bootstrap: {KAFKA_SERVER})...")
 
 kafka_stream = spark \
     .readStream \
@@ -102,10 +102,10 @@ def write_to_influxdb(batch_df, batch_id):
     Ghi một batch DataFrame vào InfluxDB
     """
     if batch_df.count() == 0:
-        print(f"⚠️  Batch {batch_id} rỗng, bỏ qua...")
+        print(f"⚠️Batch {batch_id} rỗng, bỏ qua...")
         return
     
-    print(f"📝 Đang ghi batch {batch_id} với {batch_df.count()} dòng vào InfluxDB...")
+    print(f"Đang ghi batch {batch_id} với {batch_df.count()} dòng vào InfluxDB...")
     
     # Tạo InfluxDB client
     client = InfluxDBClient(url=INFLUXDB_URL, token=INFLUXDB_TOKEN, org=INFLUXDB_ORG)
@@ -161,20 +161,20 @@ def write_to_influxdb(batch_df, batch_id):
                 
             except Exception as e:
                 error_count += 1
-                print(f"⚠️  Lỗi khi xử lý dòng: {e}")
+                print(f"⚠️Lỗi khi xử lý dòng: {e}")
                 continue
         
         # Ghi vào InfluxDB
         if points:
             write_api.write(bucket=INFLUXDB_BUCKET, record=points)
-            print(f"✅ Đã ghi {success_count}/{len(rows)} points vào InfluxDB (batch {batch_id})")
+            print(f"✅Đã ghi {success_count}/{len(rows)} points vào InfluxDB (batch {batch_id})")
             if error_count > 0:
-                print(f"⚠️  Bỏ qua {error_count} dòng lỗi")
+                print(f"⚠️Bỏ qua {error_count} dòng lỗi")
         else:
-            print(f"⚠️  Không có points hợp lệ trong batch {batch_id}")
+            print(f"⚠️Không có points hợp lệ trong batch {batch_id}")
         
     except Exception as e:
-        print(f"❌ Lỗi khi ghi batch {batch_id} vào InfluxDB: {e}")
+        print(f"❌Lỗi khi ghi batch {batch_id} vào InfluxDB: {e}")
         import traceback
         traceback.print_exc()
     finally:
@@ -182,7 +182,7 @@ def write_to_influxdb(batch_df, batch_id):
         client.close()
 
 # ===== BẮT ĐẦU STREAMING =====
-print(f"💾 Bắt đầu ghi streaming data vào InfluxDB")
+print(f"Bắt đầu ghi streaming data vào InfluxDB")
 
 query = cleaned_stream \
     .writeStream \
@@ -201,11 +201,11 @@ try:
         time.sleep(10)
         progress = query.lastProgress
         if progress:
-            print(f"⏱️  Batch: {progress['batchId']} | "
+            print(f"Batch: {progress['batchId']} | "
                   f"Input Rows: {progress['numInputRows']} | "
                   f"Processing Time: {progress.get('batchDuration', 0)}ms")
 except KeyboardInterrupt:
-    print("\nℹ️  Đang dừng stream...")
+    print("\nℹ️Đang dừng stream...")
     query.stop()
     spark.stop()
-    print("✅ Đã đóng kết nối!")
+    print("✅Đã đóng kết nối!")

@@ -40,9 +40,11 @@ CSV Data → Producer → Kafka → Spark Streaming → MinIO (Raw Data)
 |-----------|------|-------|
 | Kafka Broker | 29092 | Message queue |
 | Kafka UI | 8080 | Web UI quản lý Kafka |
-| Spark Master | 9090 | Spark cluster master |
-| Spark Worker | 9091 | Spark executor |
-| MinIO | 30001 | Object storage (S3-compatible) |
+| Spark Master for MinIO | 9090 | Spark cluster master |
+| Spark Master for InfluxDB | 9093 | Spark cluster master |
+| Spark Worker for MinIO | 9091 | Spark executor |
+| Spark Worker for InfluxDB | 9094 | Spark executor |
+| MinIO | 30001 | Object storage |
 | InfluxDB | 8086 | Time-series database |
 | Grafana | 30003 | Dashboard visualization |
 
@@ -53,7 +55,7 @@ CSV Data → Producer → Kafka → Spark Streaming → MinIO (Raw Data)
 ### 1. Clone project
 
 ```bash
-git clone <repository-url>
+git clone https://github.com/Je-Tiev/BigData-RiverAnalysis
 cd BIGDATA-RIVERANALYSIS
 ```
 
@@ -96,15 +98,19 @@ docker-compose ps
 **Kết quả mong đợi:** Tất cả services đều có status `Up`
 
 ```
-NAME              STATUS
-kafka-broker      Up
-kafka-controller  Up
-kafka-ui          Up
-minio             Up
-mongodb           Up
-spark-master      Up
-spark-worker      Up
-grafana           Up
+NAME                    STATUS
+kafka-broker            Up
+kafka-controller        Up
+kafka-ui                Up
+minio                   Up
+influxdb                Up
+spark-master            Up
+spark-worker            Up
+spark-master-minio      Up
+spark-master-influxdb   Up
+spark-worker-minio      Up
+spark-worker-influxdb   Up
+grafana                 Up
 ```
 
 ---
@@ -191,10 +197,10 @@ docker exec -it spark-master-minio /opt/spark/bin/spark-submit `
 **Log mong đợi:**
 
 ```
-✅ Đã khởi tạo Spark Session với MinIO connector
-📡 Đang kết nối tới Kafka topic: river_sensors...
-💾 Bắt đầu ghi streaming data vào MinIO: s3a://water-quality-raw/raw_data
-🚀 Stream đang chạy... Nhấn Ctrl+C để dừng
+✅Đã khởi tạo Spark Session với MinIO connector
+Đang kết nối tới Kafka topic: river_sensors...
+Bắt đầu ghi streaming data vào MinIO: s3a://water-quality-raw/raw_data
+Stream đang chạy... Nhấn Ctrl+C để dừng
 ```
 
 **Giữ terminal này chạy liên tục**
@@ -227,14 +233,14 @@ docker exec -it spark-master-influxdb /opt/spark/bin/spark-submit `
 **Log mong đợi:**
 
 ```
-✅ Đã khởi tạo Spark Session cho InfluxDB
-🔗 InfluxDB URL: http://influxdb:8086
-📡 Đang kết nối tới Kafka topic: river_sensors...
-💾 Bắt đầu streaming metrics vào InfluxDB: water-quality.river-data
-🚀 Stream đang chạy...
-📊 Đang tính toán metrics theo cửa sổ 5 phút...
-🔍 Batch 0: Đang ghi 15 records vào InfluxDB...
-✅ Batch 0: Đã ghi thành công!
+✅Đã khởi tạo Spark Session cho InfluxDB
+InfluxDB URL: http://influxdb:8086
+Đang kết nối tới Kafka topic: river_sensors...
+Bắt đầu streaming metrics vào InfluxDB: water-quality.river-data
+Stream đang chạy...
+Đang tính toán metrics theo cửa sổ 5 phút...
+Batch 0: Đang ghi 15 records vào InfluxDB...
+✅Batch 0: Đã ghi thành công!
 ```
 
 **Giữ terminal này chạy liên tục**
@@ -248,8 +254,10 @@ docker exec -it spark-master-influxdb /opt/spark/bin/spark-submit `
 | Service | URL | Login |
 |---------|-----|-------|
 | Kafka UI | http://localhost:8080 | - |
-| Spark Master | http://localhost:9090 | - |
-| Spark Worker | http://localhost:9091 | - |
+| Spark Master for MinIO | http://localhost:9090 | - |
+| Spark Master for InfluxDB | http://localhost:9093 | - |
+| Spark Worker for MinIO | http://localhost:9091 | - |
+| Spark Worker for InfluxDB | http://localhost:9094 | - |
 | InfluxDB UI | http://localhost:8086 | admin / password123 |
 | MinIO Console | http://localhost:30001 | admin / password123 |
 | Grafana | http://localhost:30003 | admin / admin123 |
@@ -262,7 +270,6 @@ docker exec -it spark-master-influxdb /opt/spark/bin/spark-submit `
 docker-compose logs -f
 
 # Logs của service cụ thể
-docker-compose logs -f spark-master
 docker-compose logs -f influxdb
 
 # Windows PowerShell
@@ -270,7 +277,6 @@ docker-compose logs -f influxdb
 docker-compose logs -f
 
 # Logs của service cụ thể
-docker-compose logs -f spark-master
 docker-compose logs -f kafka-broker
 docker-compose logs -f influx-broker
 ```
@@ -332,31 +338,35 @@ docker-compose down -v --rmi all
 
 ---
 
-## 📁 Cấu trúc thư mục
+## Cấu trúc thư mục
 
 ```
 BIGDATA-RIVERANALYSIS/
 ├── kafka/
 │   ├── Dockerfile
-│   └── producer.py
+│   ├── sort_the_source.py
+│   ├── producer.py
+│   ├── WQI Results on Dataset.csv
+│   └── sorted_water_quality_1.csv
 ├── streaming
 │   ├── spark_to_minio.py
 │   └── spark_to_influxdb.py
+├── grafana
+│   ├── dashboards
+│   └── provisioning
 ├── Dockerfile.spark              
 ├── docker-compose.yml
-├── sort_the_source.py
-├── sorted_water_quality_1.csv    # ← Được tạo bởi sort_the_source.py
-├── WQI Results on Dataset.csv    # ← File dữ liệu gốc
 └── README.md                     
 ```
 
 ---
 
-## 📚 Tài liệu tham khảo
+## Tài liệu tham khảo
 
 - [Apache Kafka Documentation](https://kafka.apache.org/documentation/)
 - [Apache Spark Structured Streaming](https://spark.apache.org/docs/latest/structured-streaming-programming-guide.html)
 - [MinIO Documentation](https://min.io/docs/minio/linux/index.html)
-- [MongoDB Manual](https://www.mongodb.com/docs/manual/)
+- [InfluxDB Documentation](- [MinIO Documentation](https://min.io/docs/minio/linux/index.html)
+)
 
 ---
