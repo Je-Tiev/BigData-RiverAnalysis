@@ -69,10 +69,7 @@
       "title": "Quality Label Distribution (%)",
       "type": "piechart",
       "pluginVersion": "12.3.0",
-      "datasource": {
-        "type": "influxdb",
-        "uid": "P951FEA4DE68E13C5"
-      },
+      "datasource": "InfluxDB",
       "targets": [
         {
           "refId": "A",
