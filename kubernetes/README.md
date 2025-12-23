@@ -39,6 +39,7 @@ kubectl apply -f kubernetes/10-influxdb.yml
 kubectl apply -f kubernetes/20-grafana.yml
 kubectl apply -f kubernetes/30-minio.yml
 kubectl apply -f kubernetes/40-kafka.yml
+kubectl apply -f kubernetes/50-spark.yml
 ```
 
 Đợi 1-3 phút để Service `LoadBalancer` có External IP:
@@ -85,9 +86,31 @@ kubectl set env deploy/kafka -n river-analysis \
 kubectl rollout restart deploy/kafka -n river-analysis
 ```
 
+## Spark (Standalone) + Streaming apps (dùng file `_deploy.py`)
+
+- **Spark Master (trong cluster)**: `spark-master.river-analysis.svc.cluster.local:7077`
+- **Spark Master Web UI**: port `8080` (gợi ý xem bằng port-forward):
+
+```bash
+kubectl port-forward svc/spark-master -n river-analysis 8080:8080
+```
+
+File `kubernetes/50-spark.yml` sẽ tạo:
+
+- `spark-master` + `spark-worker` (cluster Spark Standalone)
+- `spark-stream-minio` chạy `spark_to_minio_deploy.py` (Kafka -> MinIO)
+- `spark-stream-influxdb` chạy `spark_to_influxdb_deploy.py` (Kafka -> InfluxDB)
+
+Lưu ý: để dùng image `spark-custom:3.5.7` trên GKE, bạn cần **push image lên registry** mà cluster pull được (GCR/Artifact Registry) và sửa lại trường `image:` trong `kubernetes/50-spark.yml` nếu cần.
+
 ## Gợi ý cấu hình Spark (khi chạy ngoài cluster)
 
 - `INFLUXDB_URL`: `http://<INFLUXDB_EXTERNAL_IP>:8086`
 - `INFLUXDB_TOKEN`: `my-super-secret-auth-token`
 - `INFLUXDB_ORG`: `water-quality`
 - `INFLUXDB_BUCKET`: `river-data`
+
+## Deployed
+grafana: http://34.87.137.129:3000
+influxDB: http://34.126.110.108:8086
+minio: http://34.142.247.135:9001
