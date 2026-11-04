@@ -1,0 +1,38 @@
+# Agent 
+.agent/
+
+# Byte-compiled / optimized / DLL files
+__pycache__/
+*.py[cod]
+*$py.class
+
+# Virtual environments
+venv/
+.venv/
+env/
+ENV/
+
+# Testing and Coverage
+.pytest_cache/
+.coverage
+htmlcov/
+
+# Local Environment Variables & Secrets (Keep .env.example tracked)
+.env
+
+# Spark Checkpoints & Local Lakehouse Warehouses
+spark-warehouse/
+checkpoints/
+.spark-data/
+*.checkpoint/
+metastore_db/
+derby.log
+
+# Operating System files
+.DS_Store
+Thumbs.db
+
+# IDEs
+.idea/
+.vscode/
+*.swp

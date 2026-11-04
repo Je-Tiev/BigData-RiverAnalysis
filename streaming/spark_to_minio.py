@@ -1,134 +1,151 @@
-from pyspark.sql import SparkSession
-from pyspark.sql.functions import col, from_json, to_timestamp, when
-from pyspark.sql.types import StructType, StructField, StringType, DoubleType
+"""Structured Streaming Ingestion to MinIO Lakehouse (Bronze Layer).
+
+Streams validated sensor telemetry from Kafka directly to MinIO Object Storage
+partitioned by ingest_date and station_id (ready for Delta Lake conversion).
+"""
+
+import logging
 import os
+from pyspark.sql import SparkSession
+from pyspark.sql.functions import (
+    col,
+    current_date,
+    current_timestamp,
+    date_format,
+    from_json,
+    to_date,
+    to_timestamp,
+    when,
+)
+from pyspark.sql.types import (
+    BooleanType,
+    DoubleType,
+    StringType,
+    StructField,
+    StructType,
+)
 
-# ===== CẤU HÌNH =====
-KAFKA_SERVER = os.environ.get('KAFKA_SERVER', 'kafka-broker:19092')
-KAFKA_TOPIC = os.environ.get('KAFKA_TOPIC', 'river-quality')
+# Logging
+logging.basicConfig(
+    level=logging.INFO,
+    format="%(asctime)s [%(levelname)s] [SparkMinIOStream]: %(message)s",
+    datefmt="%Y-%m-%d %H:%M:%S",
+)
+logger = logging.getLogger("SparkMinIOStream")
 
-# MinIO settings: prefer Docker compose credentials (MINIO_ROOT_USER / MINIO_ROOT_PASSWORD)
-MINIO_ENDPOINT = os.environ.get('MINIO_ENDPOINT', 'minio:9000')
-MINIO_ACCESS_KEY = os.environ.get('MINIO_ROOT_USER', os.environ.get('MINIO_ACCESS_KEY', 'admin'))
-MINIO_SECRET_KEY = os.environ.get('MINIO_ROOT_PASSWORD', os.environ.get('MINIO_SECRET_KEY', 'password123'))
-MINIO_BUCKET = os.environ.get('MINIO_BUCKET', 'water-quality-raw')
+# Configuration
+KAFKA_SERVER = os.environ.get("KAFKA_BOOTSTRAP", os.environ.get("KAFKA_BOOTSTRAP_SERVERS", "kafka-broker:19092"))
+KAFKA_TOPIC = os.environ.get("KAFKA_TOPIC_RAW", os.environ.get("KAFKA_TOPIC", "river.sensors.raw"))
 
-# Use mounted spark data dir when running in compose
-CHECKPOINT_DIR = os.environ.get('CHECKPOINT_DIR', '/opt/spark-data/checkpoints/minio_stream')
+MINIO_ENDPOINT = os.environ.get("MINIO_ENDPOINT", "minio:9000")
+MINIO_ACCESS_KEY = os.environ.get("MINIO_ACCESS_KEY", os.environ.get("MINIO_ROOT_USER", "admin"))
+MINIO_SECRET_KEY = os.environ.get("MINIO_SECRET_KEY", os.environ.get("MINIO_ROOT_PASSWORD", "password123"))
+MINIO_BUCKET = os.environ.get("MINIO_BUCKET", "water-quality-lakehouse")
 
-# ===== KHỞI TẠO SPARK =====
+CHECKPOINT_DIR = os.environ.get("CHECKPOINT_DIR", "/opt/spark-data/checkpoints/minio_bronze_stream")
+OUTPUT_PATH = os.environ.get("OUTPUT_PATH", f"s3a://{MINIO_BUCKET}/bronze")
+
+# Spark Session
 spark = SparkSession.builder \
-    .appName("WaterQuality_to_MinIO") \
+    .appName("RiverQuality_to_MinIO_Bronze") \
     .config("spark.hadoop.fs.s3a.endpoint", f"http://{MINIO_ENDPOINT}") \
     .config("spark.hadoop.fs.s3a.access.key", MINIO_ACCESS_KEY) \
     .config("spark.hadoop.fs.s3a.secret.key", MINIO_SECRET_KEY) \
     .config("spark.hadoop.fs.s3a.path.style.access", "true") \
     .config("spark.hadoop.fs.s3a.impl", "org.apache.hadoop.fs.s3a.S3AFileSystem") \
+    .config("spark.hadoop.fs.s3a.connection.ssl.enabled", "false") \
     .config("spark.sql.streaming.checkpointLocation", CHECKPOINT_DIR) \
     .getOrCreate()
 
 spark.sparkContext.setLogLevel("WARN")
+logger.info("Spark Session initialized with S3A MinIO connector (%s)", MINIO_ENDPOINT)
 
-print("✅Đã khởi tạo Spark Session với MinIO connector")
-
-# ===== ĐỊNH NGHĨA SCHEMA =====
-# Schema phải khớp chính xác với dữ liệu từ producer
-schema = StructType([
+# Unified Schema
+sensor_schema = StructType([
+    StructField("schema_version", StringType(), True),
+    StructField("station_id", StringType(), True),
+    StructField("station_name", StringType(), True),
+    StructField("river_name", StringType(), True),
+    StructField("basin_name", StringType(), True),
+    StructField("latitude", DoubleType(), True),
+    StructField("longitude", DoubleType(), True),
+    StructField("timestamp", StringType(), True),
+    StructField("temperature", DoubleType(), True),
+    StructField("ph", DoubleType(), True),
+    StructField("dissolved_oxygen", DoubleType(), True),
+    StructField("conductivity", DoubleType(), True),
+    StructField("ammonia", DoubleType(), True),
+    StructField("bod5", DoubleType(), True),
+    StructField("chloride", DoubleType(), True),
+    StructField("total_hardness", DoubleType(), True),
+    StructField("turbidity_ntu", DoubleType(), True),
+    StructField("flow_rate_m3s", DoubleType(), True),
+    StructField("ccme_score", DoubleType(), True),
+    StructField("quality_label", StringType(), True),
+    StructField("is_anomaly", BooleanType(), True),
+    StructField("anomaly_reason", StringType(), True),
+    # Legacy support
     StructField("FullDate", StringType(), True),
     StructField("WaterbodyName", StringType(), True),
-    StructField("Temperature", StringType(), True),
-    StructField("pH", StringType(), True),
-    StructField("Dissolved Oxygen", StringType(), True),
     StructField("Conductivity @25°C", StringType(), True),
     StructField("Ammonia-Total (as N)", StringType(), True),
     StructField("BOD - 5 days (Total)", StringType(), True),
-    StructField("Chloride", StringType(), True),
     StructField("Total Hardness (as CaCO3)", StringType(), True),
-    StructField("CCME_Values", StringType(), True)
+    StructField("CCME_Values", StringType(), True),
 ])
 
-# ===== ĐỌC TỪ KAFKA =====
-print(f"Đang kết nối tới Kafka topic: {KAFKA_TOPIC} (bootstrap: {KAFKA_SERVER})...")
-print(f"DEBUG - KAFKA_SERVER: {KAFKA_SERVER}")
-print(f"DEBUG - KAFKA_TOPIC: {KAFKA_TOPIC}")
-print(f"DEBUG - MINIO_ENDPOINT: {MINIO_ENDPOINT}")
-print(f"DEBUG - CHECKPOINT_DIR: {CHECKPOINT_DIR}")
-kafka_stream = spark \
-    .readStream \
+# Read Kafka
+raw_stream = spark.readStream \
     .format("kafka") \
     .option("kafka.bootstrap.servers", KAFKA_SERVER) \
-    .option("subscribe", KAFKA_TOPIC) \
-    .option("startingOffsets", "earliest") \
+    .option("subscribe", f"{KAFKA_TOPIC},river-quality") \
+    .option("startingOffsets", "latest") \
     .option("failOnDataLoss", "false") \
     .load()
 
-# Parse JSON từ Kafka value
-parsed_stream = kafka_stream.select(
-    from_json(col("value").cast("string"), schema).alias("data"),
-    col("timestamp").alias("kafka_timestamp")
-).select("data.*", "kafka_timestamp")
-
-# ===== LÀM SẠCH VÀ CHUYỂN ĐỔI DỮ LIỆU =====
-cleaned_stream = parsed_stream \
-    .withColumn("timestamp", to_timestamp(col("FullDate"), "yyyy-MM-dd")) \
-    .withColumn("waterbody_name", col("WaterbodyName")) \
-    .withColumn("temperature", col("Temperature").cast(DoubleType())) \
-    .withColumn("ph", col("pH").cast(DoubleType())) \
-    .withColumn("dissolved_oxygen", col("Dissolved Oxygen").cast(DoubleType())) \
-    .withColumn("conductivity", col("Conductivity @25°C").cast(DoubleType())) \
-    .withColumn("ammonia", col("Ammonia-Total (as N)").cast(DoubleType())) \
-    .withColumn("bod", col("BOD - 5 days (Total)").cast(DoubleType())) \
-    .withColumn("chloride", col("Chloride").cast(DoubleType())) \
-    .withColumn("hardness", col("Total Hardness (as CaCO3)").cast(DoubleType())) \
-    .withColumn("ccme_score", col("CCME_Values").cast(DoubleType()))
-
-# Chuyển đổi CCME_Values (số) thành quality_label (text)
-cleaned_stream = cleaned_stream.withColumn(
-    "quality_label",
-    when(col("ccme_score") >= 95, "Excellent")
-    .when(col("ccme_score") >= 80, "Good")
-    .when(col("ccme_score") >= 65, "Fair")
-    .when(col("ccme_score") >= 45, "Marginal")
-    .otherwise("Poor")
+# Parse & Normalize
+parsed_stream = raw_stream.select(
+    from_json(col("value").cast("string"), sensor_schema).alias("data"),
+    col("timestamp").alias("kafka_ingest_time"),
+    col("offset").alias("kafka_offset"),
 )
 
-# Drop các cột cũ
-cleaned_stream = cleaned_stream.drop(
-    "FullDate", "WaterbodyName", "CCME_Values",
-    "Temperature", "pH", "Dissolved Oxygen", 
-    "Conductivity @25°C", "Ammonia-Total (as N)", 
-    "BOD - 5 days (Total)", "Chloride", "Total Hardness (as CaCO3)"
-)
+normalized_stream = parsed_stream \
+    .filter(col("data").isNotNull()) \
+    .select("data.*", "kafka_ingest_time", "kafka_offset") \
+    .withColumn(
+        "station_id",
+        when(col("station_id").isNotNull(), col("station_id"))
+        .otherwise(col("WaterbodyName"))
+    ) \
+    .withColumn(
+        "river_name",
+        when(col("river_name").isNotNull(), col("river_name"))
+        .otherwise(col("WaterbodyName"))
+    ) \
+    .withColumn(
+        "event_time",
+        when(col("timestamp").isNotNull(), to_timestamp(col("timestamp")))
+        .when(col("FullDate").isNotNull(), to_timestamp(col("FullDate"), "yyyy-MM-dd"))
+        .otherwise(col("kafka_ingest_time"))
+    ) \
+    .withColumn("ingest_date", date_format(col("event_time"), "yyyy-MM-dd"))
 
-# ===== GHI VÀO MINIO =====
-output_path = f"s3a://{MINIO_BUCKET}/raw_data"
+logger.info("Writing streaming Bronze raw data to: %s (Partitioned by ingest_date)", OUTPUT_PATH)
 
-print(f"Bắt đầu ghi streaming data vào MinIO: {output_path}")
-
-query = cleaned_stream \
-    .writeStream \
+query = normalized_stream.writeStream \
     .outputMode("append") \
     .format("parquet") \
-    .option("path", output_path) \
+    .option("path", OUTPUT_PATH) \
     .option("checkpointLocation", CHECKPOINT_DIR) \
-    .partitionBy("quality_label") \
-    .trigger(processingTime='30 seconds') \
+    .partitionBy("ingest_date") \
+    .trigger(processingTime="30 seconds") \
     .start()
 
-print("Stream đang chạy... Nhấn Ctrl+C để dừng")
-
-# ===== MONITOR =====
 try:
-    import time
-    while query.isActive:
-        time.sleep(10)
-        progress = query.lastProgress
-        if progress:
-            print(f"Batch: {progress['batchId']} | "
-                  f"Input Rows: {progress['numInputRows']} | "
-                  f"Processed: {progress.get('sink', {}).get('numOutputRows', 0)}")
+    query.awaitTermination()
 except KeyboardInterrupt:
-    print("\n⏹️Đang dừng stream...")
+    logger.info("Stream stopping on operator request...")
     query.stop()
     spark.stop()
-    print("✅Đã đóng kết nối!")
+    logger.info("MinIO stream stopped cleanly.")
