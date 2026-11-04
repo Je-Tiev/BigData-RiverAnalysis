@@ -1,6 +1,14 @@
-# ========================================================
-# Big Data River Quality Platform - Production Compose
-# ========================================================
+# ==============================================================================
+# Big Data River Quality Platform - Production Compose Architecture
+# ==============================================================================
+# Services:
+#   - Messaging: Kafka KRaft Controller, Kafka Broker, Kafka UI
+#   - Storage: MinIO (Delta Lakehouse S3), InfluxDB 2.x (Time-series)
+#   - Compute: Apache Spark Master & Worker (Delta Lake 3.2.0 enabled)
+#   - Orchestration: PostgreSQL 15, Airflow Init, Webserver & Scheduler
+#   - Observability: Prometheus (Scraping), Grafana (Provisioned Dashboards)
+#   - AI & Operations: FastAPI Model Serving (8000), Streamlit GIS Dashboard (8501)
+# ==============================================================================
 
 x-spark-common: &spark-common
   build:
@@ -16,9 +24,21 @@ x-spark-common: &spark-common
     - river-net
   restart: unless-stopped
 
+x-app-common: &app-common
+  build:
+    context: .
+    dockerfile: Dockerfile
+  image: river-app:latest
+  volumes:
+    - ./src:/app/src
+    - ./monitoring:/app/monitoring
+  networks:
+    - river-net
+  restart: unless-stopped
+
 services:
   # ========================================================
-  # Kafka Controller (KRaft Mode)
+  # 1. Kafka Controller (KRaft Mode)
   # ========================================================
   kafka-controller:
     image: apache/kafka:4.0.1
@@ -36,9 +56,14 @@ services:
     networks:
       - river-net
     restart: unless-stopped
+    deploy:
+      resources:
+        limits:
+          memory: 512M
+          cpus: '0.75'
 
   # ========================================================
-  # Kafka Broker Node
+  # 2. Kafka Broker Node
   # ========================================================
   kafka-broker:
     image: apache/kafka:4.0.1
@@ -58,12 +83,19 @@ services:
       KAFKA_AUTO_CREATE_TOPICS_ENABLE: "true"
     depends_on:
       - kafka-controller
+    volumes:
+      - kafka_broker_data:/var/lib/kafka/data
     networks:
       - river-net
     restart: unless-stopped
+    deploy:
+      resources:
+        limits:
+          memory: 1G
+          cpus: '1.5'
 
   # ========================================================
-  # Kafka Web UI (Management & Topic Inspection)
+  # 3. Kafka Web UI (Management & Topic Inspection)
   # ========================================================
   kafka-ui:
     image: provectuslabs/kafka-ui:latest
@@ -78,9 +110,14 @@ services:
     networks:
       - river-net
     restart: unless-stopped
+    deploy:
+      resources:
+        limits:
+          memory: 512M
+          cpus: '0.5'
 
   # ========================================================
-  # MinIO (S3-Compatible Object Storage for Lakehouse)
+  # 4. MinIO (S3-Compatible Object Storage for Delta Lakehouse)
   # ========================================================
   minio:
     image: minio/minio:latest
@@ -92,14 +129,24 @@ services:
     environment:
       MINIO_ROOT_USER: ${MINIO_ACCESS_KEY:-admin}
       MINIO_ROOT_PASSWORD: ${MINIO_SECRET_KEY:-password123}
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:9000/minio/health/live"]
+      interval: 15s
+      timeout: 5s
+      retries: 3
     volumes:
       - minio_data:/data
     networks:
       - river-net
     restart: unless-stopped
+    deploy:
+      resources:
+        limits:
+          memory: 1G
+          cpus: '1.0'
 
   # ========================================================
-  # InfluxDB 2.x (Time-Series Metric Store)
+  # 5. InfluxDB 2.x (Time-Series Metric Store)
   # ========================================================
   influxdb:
     image: influxdb:2.7
@@ -113,15 +160,25 @@ services:
       DOCKER_INFLUXDB_INIT_ORG: ${INFLUXDB_ORG:-water-quality}
       DOCKER_INFLUXDB_INIT_BUCKET: ${INFLUXDB_BUCKET:-river-data}
       DOCKER_INFLUXDB_INIT_ADMIN_TOKEN: ${INFLUXDB_TOKEN:-my-super-secret-auth-token}
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8086/health"]
+      interval: 15s
+      timeout: 5s
+      retries: 3
     volumes:
       - influxdb_data:/var/lib/influxdb2
       - influxdb_config:/etc/influxdb2
     networks:
       - river-net
     restart: unless-stopped
+    deploy:
+      resources:
+        limits:
+          memory: 1G
+          cpus: '1.0'
 
   # ========================================================
-  # Spark Master (Unified Distributed Master Node)
+  # 6. Spark Master (Unified Distributed Compute Engine)
   # ========================================================
   spark-master:
     <<: *spark-common
@@ -152,9 +209,14 @@ services:
       - kafka-broker
       - influxdb
       - minio
+    deploy:
+      resources:
+        limits:
+          memory: 1.5G
+          cpus: '1.5'
 
   # ========================================================
-  # Spark Worker (Unified Distributed Worker Node)
+  # 7. Spark Worker (Unified Distributed Worker Node)
   # ========================================================
   spark-worker:
     <<: *spark-common
@@ -164,7 +226,7 @@ services:
       spark://spark-master:7077
     environment:
       SPARK_WORKER_CORES: 4
-      SPARK_WORKER_MEMORY: 4G
+      SPARK_WORKER_MEMORY: 2G
       SPARK_WORKER_WEBUI_PORT: 8081
       KAFKA_BOOTSTRAP: kafka-broker:19092
       INFLUXDB_URL: http://influxdb:8086
@@ -179,9 +241,14 @@ services:
       - "9091:8081"
     depends_on:
       - spark-master
+    deploy:
+      resources:
+        limits:
+          memory: 2.5G
+          cpus: '2.0'
 
   # ========================================================
-  # PostgreSQL (Airflow Metadata Database)
+  # 8. PostgreSQL (Airflow Metadata Database)
   # ========================================================
   postgres:
     image: postgres:15-alpine
@@ -190,14 +257,43 @@ services:
       POSTGRES_USER: airflow
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-airflow}
       POSTGRES_DB: airflow
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U airflow"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
     volumes:
       - postgres_data:/var/lib/postgresql/data
     networks:
       - river-net
     restart: unless-stopped
+    deploy:
+      resources:
+        limits:
+          memory: 512M
+          cpus: '0.75'
 
   # ========================================================
-  # Airflow Webserver (Lakehouse Orchestrator UI)
+  # 9. Airflow Database Init
+  # ========================================================
+  airflow-init:
+    image: apache/airflow:2.8.3-python3.10
+    container_name: airflow-init
+    command: >
+      bash -c "airflow db migrate && airflow users create --username admin --firstname River --lastname Admin --role Admin --email admin@river.local --password admin || true"
+    environment:
+      AIRFLOW__CORE__EXECUTOR: LocalExecutor
+      AIRFLOW__DATABASE__SQL_ALCHEMY_CONN: postgresql+psycopg2://airflow:${POSTGRES_PASSWORD:-airflow}@postgres:5432/airflow
+      AIRFLOW__CORE__LOAD_EXAMPLES: "false"
+    depends_on:
+      postgres:
+        condition: service_healthy
+    networks:
+      - river-net
+    restart: on-failure
+
+  # ========================================================
+  # 10. Airflow Webserver (Lakehouse Orchestrator UI)
   # ========================================================
   airflow-webserver:
     image: apache/airflow:2.8.3-python3.10
@@ -222,10 +318,16 @@ services:
       - river-net
     restart: unless-stopped
     depends_on:
-      - postgres
+      airflow-init:
+        condition: service_completed_successfully
+    deploy:
+      resources:
+        limits:
+          memory: 1G
+          cpus: '1.0'
 
   # ========================================================
-  # Airflow Scheduler (DAG Execution Engine)
+  # 11. Airflow Scheduler (DAG Execution Engine)
   # ========================================================
   airflow-scheduler:
     image: apache/airflow:2.8.3-python3.10
@@ -247,10 +349,41 @@ services:
       - river-net
     restart: unless-stopped
     depends_on:
-      - postgres
+      airflow-init:
+        condition: service_completed_successfully
+    deploy:
+      resources:
+        limits:
+          memory: 1G
+          cpus: '1.0'
 
   # ========================================================
-  # Grafana (Dashboard & Pipeline Monitoring)
+  # 12. Prometheus (Big Data Metrics Collection Engine)
+  # ========================================================
+  prometheus:
+    image: prom/prometheus:v2.50.0
+    container_name: prometheus
+    command:
+      - '--config.file=/etc/prometheus/prometheus.yml'
+      - '--storage.tsdb.path=/prometheus'
+      - '--web.console.libraries=/usr/share/prometheus/console_libraries'
+      - '--web.console.templates=/usr/share/prometheus/consoles'
+    ports:
+      - "9095:9090"
+    volumes:
+      - ./monitoring/prometheus/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      - prometheus_data:/prometheus
+    networks:
+      - river-net
+    restart: unless-stopped
+    deploy:
+      resources:
+        limits:
+          memory: 512M
+          cpus: '0.75'
+
+  # ========================================================
+  # 13. Grafana (Dashboard & Pipeline Monitoring)
   # ========================================================
   grafana:
     image: grafana/grafana:latest
@@ -269,6 +402,62 @@ services:
     restart: unless-stopped
     depends_on:
       - influxdb
+      - prometheus
+    deploy:
+      resources:
+        limits:
+          memory: 512M
+          cpus: '0.75'
+
+  # ========================================================
+  # 14. River ML Model Serving API (FastAPI)
+  # ========================================================
+  river-api:
+    <<: *app-common
+    container_name: river-api
+    command: python -m uvicorn src.serving.api:app --host 0.0.0.0 --port 8000
+    ports:
+      - "8000:8000"
+    environment:
+      API_HOST: 0.0.0.0
+      API_PORT: 8000
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
+      interval: 15s
+      timeout: 5s
+      retries: 3
+    networks:
+      - river-net
+    restart: unless-stopped
+    deploy:
+      resources:
+        limits:
+          memory: 1G
+          cpus: '1.0'
+
+  # ========================================================
+  # 15. River Operations Command Center (Streamlit Dashboard)
+  # ========================================================
+  river-dashboard:
+    <<: *app-common
+    container_name: river-dashboard
+    command: streamlit run src/dashboard/app.py --server.port 8501 --server.address 0.0.0.0
+    ports:
+      - "8501:8501"
+    environment:
+      STREAMLIT_SERVER_PORT: 8501
+      STREAMLIT_SERVER_HEADLESS: "true"
+      STREAMLIT_BROWSER_GATHER_USAGE_STATS: "false"
+    depends_on:
+      - river-api
+    networks:
+      - river-net
+    restart: unless-stopped
+    deploy:
+      resources:
+        limits:
+          memory: 1G
+          cpus: '1.0'
 
 # ========================================================
 # Networks & Volumes
@@ -278,12 +467,14 @@ networks:
     driver: bridge
 
 volumes:
+  kafka_controller_data:
+  kafka_broker_data:
   minio_data:
   influxdb_data:
   influxdb_config:
-  kafka_controller_data:
   spark_checkpoints:
   spark_delta:
   postgres_data:
   airflow_logs:
+  prometheus_data:
   grafana_data:

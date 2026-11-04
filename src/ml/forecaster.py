@@ -10,8 +10,7 @@ from datetime import datetime, timedelta, timezone
 import logging
 import math
 import os
-import pickle
-from typing import Any, Dict, List, Optional, Tuple
+from typing import Any, Dict, List, Optional
 
 logger = logging.getLogger("RiverForecaster")
 
@@ -126,7 +125,6 @@ class RiverWaterQualityForecaster:
         horizon_hours: int = 24,
     ) -> StationForecastResult:
         """Generates multi-step ahead forecasts with 95% confidence intervals."""
-        from src.ml.feature_extractor import RiverFeatureExtractor
         from src.producers.river_simulator import HydrologicalPhysicsEngine
 
         now_iso = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
@@ -145,7 +143,6 @@ class RiverWaterQualityForecaster:
         cur_turb = float(current_reading.get("turbidity_ntu", 25.0))
 
         points: List[ForecastPoint] = []
-        sim_history = list(recent_history or []) + [current_reading]
 
         do_std = self._residual_stds.get("dissolved_oxygen", 0.35)
         ph_std = self._residual_stds.get("ph", 0.12)

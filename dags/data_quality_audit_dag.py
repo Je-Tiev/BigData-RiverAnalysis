@@ -7,7 +7,6 @@ Runs periodic data quality assertions on the Silver Lakehouse layer:
 """
 
 from datetime import datetime, timedelta
-import json
 import logging
 import os
 import sys

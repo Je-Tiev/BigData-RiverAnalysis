@@ -11,7 +11,7 @@ from dataclasses import asdict, dataclass, field
 from datetime import datetime, timezone
 import json
 import logging
-from typing import Any, Dict, List, Optional, Tuple
+from typing import Any, Dict, List
 
 logger = logging.getLogger("DataQualityAuditor")
 

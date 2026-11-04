@@ -28,6 +28,10 @@ checkpoints/
 metastore_db/
 derby.log
 
+# MLflow local runs and artifacts
+.mlflow_local/
+mlruns/
+
 # Operating System files
 .DS_Store
 Thumbs.db

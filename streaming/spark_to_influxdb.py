@@ -7,7 +7,6 @@ Production-grade stream processing engine:
 4. Real-time CCME WQI and critical alert tagging (QCVN 08-MT:2015/BTNMT).
 """
 
-import json
 import logging
 import os
 import sys
@@ -17,14 +16,12 @@ from pyspark.sql import SparkSession
 from pyspark.sql.functions import (
     col,
     current_timestamp,
-    expr,
     from_json,
     lit,
     struct,
     to_json,
     to_timestamp,
     when,
-    window,
 )
 from pyspark.sql.types import (
     BooleanType,

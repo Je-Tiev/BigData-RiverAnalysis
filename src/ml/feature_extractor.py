@@ -7,7 +7,7 @@ Transforms raw and Gold time-series records into feature matrices ready for:
 
 from datetime import datetime, timezone
 import math
-from typing import Any, Dict, List, Optional, Tuple
+from typing import Any, Dict, List, Optional
 
 FEATURE_COLUMNS = [
     # Instantaneous Sensors

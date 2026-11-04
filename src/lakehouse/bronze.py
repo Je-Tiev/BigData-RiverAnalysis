@@ -7,8 +7,6 @@ Partitioned by ingest_date for efficient date-range partitioning and lifecycle r
 """
 
 import logging
-import os
-from typing import Optional
 
 from pyspark.sql import DataFrame, SparkSession
 from pyspark.sql.functions import (

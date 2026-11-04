@@ -5,7 +5,6 @@ Intervals, MLflow Tracking, Alert Manager, and FastAPI Endpoints.
 """
 
 from datetime import datetime, timezone
-import json
 import os
 import sys
 import unittest

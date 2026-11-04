@@ -1,0 +1,84 @@
+# ==============================================================================
+# Big Data River Quality Platform - Continuous Integration (CI) Workflow
+# ==============================================================================
+
+name: CI - River Big Data & MLOps Pipeline
+
+on:
+  push:
+    branches:
+      - main
+      - master
+      - develop
+  pull_request:
+    branches:
+      - main
+      - master
+      - develop
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  lint-and-code-quality:
+    name: Code Quality & Linting
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python 3.12
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: "pip"
+
+      - name: Install Linting Tools
+        run: |
+          python -m pip install --upgrade pip
+          pip install ruff
+
+      - name: Run Ruff Linter
+        run: |
+          # Check for errors, syntax bugs, and undefined names
+          ruff check src/ tests/ dags/ streaming/ --select=E,F,W --ignore=E501
+
+  unit-and-integration-tests:
+    name: Automated Unit & Integration Tests
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python 3.12
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: "pip"
+
+      - name: Install Platform Dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+
+      - name: Copy Sample Environment Config
+        run: cp .env.example .env
+
+      - name: Execute Full Pytest Test Suite
+        run: |
+          pytest tests/ -v --durations=10
+
+  docker-compose-validation:
+    name: Docker Infrastructure Compose Validation
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@v4
+
+      - name: Copy Sample Environment Config
+        run: cp .env.example .env
+
+      - name: Validate Docker Compose Configuration
+        run: |
+          docker compose config --quiet

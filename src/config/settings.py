@@ -6,7 +6,6 @@ production defaults, ensuring no hardcoded IPs or secrets in application logic.
 
 import os
 from dataclasses import dataclass, field
-from typing import Optional
 
 
 @dataclass

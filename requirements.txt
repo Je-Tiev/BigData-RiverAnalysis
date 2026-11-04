@@ -1,16 +1,41 @@
-# Core Data & Streaming
-kafka-python>=2.0.2
-pyspark>=3.5.0
-pandas>=2.1.0
-pydantic>=2.5.0
+# ==============================================================================
+# Big Data River Quality Platform - Dependencies
+# ==============================================================================
 
-# Storage Connectors
+# Core Data Contracts, Validation & Configuration
+pydantic>=2.5.0
+python-dotenv>=1.0.0
+pyyaml>=6.0.0
+requests>=2.31.0
+httpx>=0.27.0
+
+# Streaming & Messaging
+kafka-python>=2.0.2
+
+# Big Data & Lakehouse
+pyspark>=3.5.0
+delta-spark>=3.2.0
+pyarrow>=14.0.0
 influxdb-client>=1.38.0
 minio>=7.2.0
 
-# Utilities & Configuration
-requests>=2.31.0
-python-dotenv>=1.0.0
+# Machine Learning & Scientific Computing
+numpy>=1.26.0
+pandas>=2.1.0
+scikit-learn>=1.4.0
+mlflow>=2.10.0
 
-# Testing & Quality Assurance
+# Model Serving & API
+fastapi>=0.110.0
+uvicorn>=0.28.0
+
+# Visualization & Interactive Operations
+streamlit>=1.32.0
+folium>=0.16.0
+streamlit-folium>=0.18.0
+plotly>=5.19.0
+
+# Testing & Linting
 pytest>=8.0.0
+pytest-asyncio>=0.23.0
+ruff>=0.3.0

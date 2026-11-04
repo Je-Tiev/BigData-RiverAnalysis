@@ -7,13 +7,11 @@ Partitioned by year, month, and station_id for high-performance temporal-spatial
 """
 
 import logging
-from typing import Optional
 
 from pyspark.sql import DataFrame, SparkSession
 from pyspark.sql.functions import (
     col,
     current_timestamp,
-    date_format,
     from_json,
     month,
     row_number,

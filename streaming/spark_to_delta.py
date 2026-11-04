@@ -13,22 +13,18 @@ import sys
 from pyspark.sql import SparkSession
 from pyspark.sql.functions import (
     col,
-    current_date,
     current_timestamp,
-    date_format,
     from_json,
     month,
     to_timestamp,
     when,
-    window,
     year,
 )
 
 # Support imports from src
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
-from src.contracts.river_schema import get_spark_schema
 from src.lakehouse.bronze import transform_kafka_to_bronze
-from src.lakehouse.silver import BRONZE_PARSER_SCHEMA, transform_bronze_to_silver
+from src.lakehouse.silver import BRONZE_PARSER_SCHEMA
 
 logging.basicConfig(
     level=logging.INFO,

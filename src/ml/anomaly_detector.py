@@ -9,7 +9,7 @@ Layer 2 (Statistical & ML): Multivariate Z-Score & Isolation Forest
 from dataclasses import asdict, dataclass, field
 import logging
 import math
-from typing import Any, Dict, List, Optional, Tuple
+from typing import Any, Dict, List, Optional
 
 logger = logging.getLogger("AnomalyDetector")
 

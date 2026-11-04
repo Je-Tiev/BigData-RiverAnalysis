@@ -9,11 +9,8 @@ import os
 from pyspark.sql import SparkSession
 from pyspark.sql.functions import (
     col,
-    current_date,
-    current_timestamp,
     date_format,
     from_json,
-    to_date,
     to_timestamp,
     when,
 )

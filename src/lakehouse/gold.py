@@ -8,7 +8,6 @@ Generates business-level aggregated datasets and feature store tables from Silve
 
 import logging
 import math
-from typing import Optional
 
 from pyspark.sql import DataFrame, SparkSession
 from pyspark.sql.functions import (
@@ -21,13 +20,11 @@ from pyspark.sql.functions import (
     expr,
     lag,
     lead,
-    lit,
     max as spark_max,
     min as spark_min,
     sin,
     stddev,
     when,
-    window,
     year,
 )
 from pyspark.sql.window import Window
@@ -67,7 +64,7 @@ def compute_gold_hourly_wqi(silver_df: DataFrame) -> DataFrame:
             avg("turbidity_ntu").alias("avg_turbidity"),
             spark_max("turbidity_ntu").alias("max_turbidity"),
             avg("flow_rate_m3s").alias("avg_flow_rate"),
-            count(when(col("is_anomaly") == True, 1)).alias("anomaly_count"),
+            count(when(col("is_anomaly"), 1)).alias("anomaly_count"),
         )
 
     # Simplified Vectorized CCME WQI calculation on aggregated averages

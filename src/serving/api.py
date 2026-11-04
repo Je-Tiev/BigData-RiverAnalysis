@@ -13,12 +13,11 @@ import sys
 import time
 from typing import Any, Dict, List, Optional
 
-from fastapi import FastAPI, HTTPException, status
+from fastapi import FastAPI
 from pydantic import BaseModel, Field
 
 # Ensure src modules are resolvable
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "../..")))
-from src.contracts.river_schema import REFERENCE_STATIONS
 from src.ml.alert_manager import RiverAlertManager
 from src.ml.anomaly_detector import AnomalyDetectionResult, RiverAnomalyDetector
 from src.ml.forecaster import RiverWaterQualityForecaster, StationForecastResult

@@ -5,7 +5,7 @@ functions for hydrological monitoring stations along river basins.
 Standardizes column names (snake_case) and eliminates character encoding bugs.
 """
 
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from datetime import datetime
 from typing import Any, Dict, List, Optional, Tuple
 

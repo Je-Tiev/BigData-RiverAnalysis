@@ -12,7 +12,7 @@ import json
 import logging
 import os
 import shutil
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, Optional
 
 logger = logging.getLogger("MLflowTracker")
 
