@@ -4,34 +4,49 @@ USER root
 
 # ===== System tools =====
 RUN apt-get update && \
-    apt-get install -y wget curl && \
+    apt-get install -y wget curl procps && \
     rm -rf /var/lib/apt/lists/*
 
 # ===== Python packages =====
 RUN pip3 install --no-cache-dir \
+    delta-spark==3.2.0 \
     influxdb-client==1.38.0 \
-    requests==2.31.0
+    requests==2.31.0 \
+    pydantic==2.5.3 \
+    python-dotenv==1.0.0
 
 # ===== Apache Maven mirror =====
 ARG MAVEN_BASE=https://repo.maven.apache.org/maven2
 
-# ===== Spark connectors =====
+# ===== Spark Connectors & Delta Lake Jars =====
 RUN cd /opt/spark/jars && \
+    # Kafka Connectors
     wget ${MAVEN_BASE}/org/apache/spark/spark-sql-kafka-0-10_2.12/3.5.0/spark-sql-kafka-0-10_2.12-3.5.0.jar && \
     wget ${MAVEN_BASE}/org/apache/kafka/kafka-clients/3.4.1/kafka-clients-3.4.1.jar && \
     wget ${MAVEN_BASE}/org/apache/spark/spark-token-provider-kafka-0-10_2.12/3.5.0/spark-token-provider-kafka-0-10_2.12-3.5.0.jar && \
     wget ${MAVEN_BASE}/org/apache/commons/commons-pool2/2.11.1/commons-pool2-2.11.1.jar && \
+    \
+    # Hadoop AWS & AWS Java SDK Bundle (MinIO / S3A)
     wget ${MAVEN_BASE}/org/apache/hadoop/hadoop-aws/3.3.4/hadoop-aws-3.3.4.jar && \
-    wget ${MAVEN_BASE}/com/amazonaws/aws-java-sdk-bundle/1.12.262/aws-java-sdk-bundle-1.12.262.jar
+    wget ${MAVEN_BASE}/com/amazonaws/aws-java-sdk-bundle/1.12.262/aws-java-sdk-bundle-1.12.262.jar && \
+    \
+    # Delta Lake 3.2.0 for Spark 3.5.x
+    wget ${MAVEN_BASE}/io/delta/delta-spark_2.12/3.2.0/delta-spark_2.12-3.2.0.jar && \
+    wget ${MAVEN_BASE}/io/delta/delta-storage/3.2.0/delta-storage-3.2.0.jar
 
-# ===== Disable Ivy =====
+# ===== Spark & Delta Configuration =====
 RUN mkdir -p /opt/spark/conf && \
     echo "spark.jars.ivy=/tmp/ivy-disabled" >> /opt/spark/conf/spark-defaults.conf && \
-    echo "spark.sql.catalogImplementation=in-memory" >> /opt/spark/conf/spark-defaults.conf
+    echo "spark.sql.catalogImplementation=in-memory" >> /opt/spark/conf/spark-defaults.conf && \
+    echo "spark.sql.extensions=io.delta.sql.DeltaSparkSessionExtension" >> /opt/spark/conf/spark-defaults.conf && \
+    echo "spark.sql.catalog.spark_catalog=org.apache.spark.sql.delta.catalog.DeltaCatalog" >> /opt/spark/conf/spark-defaults.conf && \
+    echo "spark.hadoop.fs.s3a.impl=org.apache.hadoop.fs.s3a.S3AFileSystem" >> /opt/spark/conf/spark-defaults.conf && \
+    echo "spark.hadoop.fs.s3a.path.style.access=true" >> /opt/spark/conf/spark-defaults.conf && \
+    echo "spark.hadoop.fs.s3a.connection.ssl.enabled=false" >> /opt/spark/conf/spark-defaults.conf
 
-# ===== Directories =====
-RUN mkdir -p /opt/jobs /opt/spark-data/checkpoints && \
-    chmod -R 777 /opt/spark-data /opt/jobs
+# ===== Directories & Permissions =====
+RUN mkdir -p /opt/jobs /opt/src /opt/spark-data/checkpoints /opt/spark-data/delta && \
+    chmod -R 777 /opt/spark-data /opt/jobs /opt/src
 
 USER spark
 WORKDIR /opt/spark

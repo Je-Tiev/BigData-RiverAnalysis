@@ -11,6 +11,7 @@ x-spark-common: &spark-common
     - ./streaming:/opt/jobs
     - ./src:/opt/src
     - spark_checkpoints:/opt/spark-data/checkpoints
+    - spark_delta:/opt/spark-data/delta
   networks:
     - river-net
   restart: unless-stopped
@@ -180,6 +181,75 @@ services:
       - spark-master
 
   # ========================================================
+  # PostgreSQL (Airflow Metadata Database)
+  # ========================================================
+  postgres:
+    image: postgres:15-alpine
+    container_name: postgres
+    environment:
+      POSTGRES_USER: airflow
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-airflow}
+      POSTGRES_DB: airflow
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    networks:
+      - river-net
+    restart: unless-stopped
+
+  # ========================================================
+  # Airflow Webserver (Lakehouse Orchestrator UI)
+  # ========================================================
+  airflow-webserver:
+    image: apache/airflow:2.8.3-python3.10
+    container_name: airflow-webserver
+    command: webserver
+    ports:
+      - "8085:8080"
+    environment:
+      AIRFLOW__CORE__EXECUTOR: LocalExecutor
+      AIRFLOW__DATABASE__SQL_ALCHEMY_CONN: postgresql+psycopg2://airflow:${POSTGRES_PASSWORD:-airflow}@postgres:5432/airflow
+      AIRFLOW__CORE__LOAD_EXAMPLES: "false"
+      AIRFLOW__WEBSERVER__SECRET_KEY: "secret-key-for-river-airflow"
+      MINIO_ENDPOINT: minio:9000
+      MINIO_ACCESS_KEY: ${MINIO_ACCESS_KEY:-admin}
+      MINIO_SECRET_KEY: ${MINIO_SECRET_KEY:-password123}
+      MINIO_BUCKET: ${MINIO_BUCKET:-water-quality-lakehouse}
+    volumes:
+      - ./dags:/opt/airflow/dags
+      - ./src:/opt/airflow/src
+      - airflow_logs:/opt/airflow/logs
+    networks:
+      - river-net
+    restart: unless-stopped
+    depends_on:
+      - postgres
+
+  # ========================================================
+  # Airflow Scheduler (DAG Execution Engine)
+  # ========================================================
+  airflow-scheduler:
+    image: apache/airflow:2.8.3-python3.10
+    container_name: airflow-scheduler
+    command: scheduler
+    environment:
+      AIRFLOW__CORE__EXECUTOR: LocalExecutor
+      AIRFLOW__DATABASE__SQL_ALCHEMY_CONN: postgresql+psycopg2://airflow:${POSTGRES_PASSWORD:-airflow}@postgres:5432/airflow
+      AIRFLOW__CORE__LOAD_EXAMPLES: "false"
+      MINIO_ENDPOINT: minio:9000
+      MINIO_ACCESS_KEY: ${MINIO_ACCESS_KEY:-admin}
+      MINIO_SECRET_KEY: ${MINIO_SECRET_KEY:-password123}
+      MINIO_BUCKET: ${MINIO_BUCKET:-water-quality-lakehouse}
+    volumes:
+      - ./dags:/opt/airflow/dags
+      - ./src:/opt/airflow/src
+      - airflow_logs:/opt/airflow/logs
+    networks:
+      - river-net
+    restart: unless-stopped
+    depends_on:
+      - postgres
+
+  # ========================================================
   # Grafana (Dashboard & Pipeline Monitoring)
   # ========================================================
   grafana:
@@ -213,4 +283,7 @@ volumes:
   influxdb_config:
   kafka_controller_data:
   spark_checkpoints:
+  spark_delta:
+  postgres_data:
+  airflow_logs:
   grafana_data:
