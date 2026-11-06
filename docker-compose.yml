@@ -15,6 +15,7 @@ x-spark-common: &spark-common
     context: .
     dockerfile: Dockerfile.spark
   image: river-spark:3.5.0
+  pull_policy: build
   volumes:
     - ./streaming:/opt/jobs
     - ./src:/opt/src
@@ -29,6 +30,7 @@ x-app-common: &app-common
     context: .
     dockerfile: Dockerfile
   image: river-app:latest
+  pull_policy: build
   volumes:
     - ./src:/app/src
     - ./monitoring:/app/monitoring
@@ -120,7 +122,7 @@ services:
   # 4. MinIO (S3-Compatible Object Storage for Delta Lakehouse)
   # ========================================================
   minio:
-    image: minio/minio:latest
+    image: cgr.dev/chainguard/minio:latest
     container_name: minio
     command: server /data --console-address :9001
     ports:

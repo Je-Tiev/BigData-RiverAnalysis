@@ -144,17 +144,14 @@ cp .env.example .env
 
 ### Bước 2: Khởi động Toàn bộ Hạ tầng bằng 1 Lệnh
 
-Sử dụng Docker Compose hoặc Makefile:
+Dự án hỗ trợ 2 cách khởi động chuẩn duy nhất:
 
-```bash
-# Cách 1: Sử dụng Makefile
-make up
+```cmd
+# Cách 1 (Khuyên dùng - Nhanh nhất trên Windows):
+.\manage.bat up
 
-# Cách 2: Sử dụng PowerShell (trên Windows)
-.\manage.ps1 up
-
-# Cách 3: Lệnh Docker Compose trực tiếp
-docker compose up -d
+# Cách 2: Sử dụng lệnh Docker trực tiếp:
+docker compose up -d --build
 ```
 
 *(Thời gian khởi động lần đầu khoảng 2-4 phút để build hình ảnh Docker và hoàn tất migration database).*
@@ -337,24 +334,24 @@ ruff check src/ tests/ dags/ streaming/ --select=E,F,W --ignore=E501
 
 ---
 
-## 🛠 Vận hành Hệ thống với Makefile & PowerShell
+## 🛠 Vận hành Hệ thống với manage.bat & Docker trực tiếp
 
-Để tối ưu hóa trải nghiệm cho nhà phát triển trên cả Linux, macOS và Windows, toàn bộ tác vụ vận hành đã được đóng gói thành các lệnh 1 dòng:
+Hệ thống được tối ưu chỉ dùng **2 phương thức duy nhất**:
 
-| Tác vụ Vận hành | Lệnh Linux / macOS (Make) | Lệnh Windows PowerShell |
+| Tác vụ Vận hành | Sử dụng Script Tiện ích (`manage.bat`) | Lệnh Docker / CLI Trực tiếp |
 |---|---|---|
-| **Build toàn bộ Docker Images** | `make build` | `.\manage.ps1 build` |
-| **Khởi động Nền tảng** | `make up` | `.\manage.ps1 up` |
-| **Dừng Nền tảng** | `make down` | `.\manage.ps1 down` |
-| **Kiểm tra trạng thái Containers** | `make status` | `.\manage.ps1 status` |
-| **Xem Logs theo thời gian thực** | `make logs` | `.\manage.ps1 logs` |
-| **Chạy 51 Pytest Tests** | `make test` | `.\manage.ps1 test` |
-| **Kiểm tra cú pháp & Linting** | `make lint` | `.\manage.ps1 lint` |
-| **Tự động Format & Sửa Lỗi Code** | `make format` | `.\manage.ps1 format` |
-| **Chạy IoT Hydrological Simulator** | `make simulator` | `.\manage.ps1 simulator` |
-| **Chạy FastAPI Serving Microservice** | `make api` | `.\manage.ps1 api` |
-| **Chạy Streamlit Dashboard** | `make dashboard` | `.\manage.ps1 dashboard` |
-| **Dọn dẹp sạch sẽ Containers & Volumes** | `make clean` | `.\manage.ps1 clean` |
+| **Build toàn bộ Docker Images** | `.\manage.bat build` | `docker compose build` |
+| **Khởi động Nền tảng** | `.\manage.bat up` | `docker compose up -d --build` |
+| **Dừng Nền tảng** | `.\manage.bat down` | `docker compose down` |
+| **Kiểm tra trạng thái Containers** | `.\manage.bat status` | `docker compose ps` |
+| **Xem Logs theo thời gian thực** | `.\manage.bat logs` | `docker compose logs -f --tail=100` |
+| **Chạy 51 Pytest Tests** | `.\manage.bat test` | `pytest tests/ -v` |
+| **Kiểm tra cú pháp & Linting** | `.\manage.bat lint` | `ruff check src/ tests/ dags/ streaming/` |
+| **Tự động Format & Sửa Lỗi Code** | `.\manage.bat format` | `ruff check src/ tests/ dags/ streaming/ --fix` |
+| **Chạy IoT Hydrological Simulator** | `.\manage.bat simulator` | `python src/producers/river_simulator.py` |
+| **Chạy FastAPI Serving Microservice** | `.\manage.bat api` | `python -m uvicorn src.serving.api:app --reload --port 8000` |
+| **Chạy Streamlit Dashboard** | `.\manage.bat dashboard` | `streamlit run src/dashboard/app.py` |
+| **Dọn dẹp sạch sẽ Containers & Volumes** | `.\manage.bat clean` | `docker compose down -v --remove-orphans` |
 
 ---
 
