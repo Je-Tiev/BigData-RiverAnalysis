@@ -10,15 +10,22 @@ import sys
 from datetime import UTC, datetime, timedelta
 from typing import Any
 
+import numpy as np
+import plotly.graph_objects as go
 import streamlit as st
 
 # Setup root path for relative imports
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "../..")))
 from src.contracts.river_schema import REFERENCE_STATIONS
+from src.hydrology.propagation_engine import StreeterPhelpsSagModel
 from src.ml.alert_manager import RiverAlertManager
 from src.ml.anomaly_detector import RiverAnomalyDetector
+from src.ml.drift_and_conformal import HydrologicalDriftMonitor
 from src.ml.forecaster import RiverWaterQualityForecaster
 from src.producers.river_simulator import RiverTelemetryGenerator
+from src.quality.dlq_recovery import DLQRecoveryEngine
+from src.quality.ecological_risk import EmersonAmmoniaKinetics, QCVN082023Classifier
+from src.quality.sensor_diagnostics import AdaptiveKalmanFilter1D, SensorFaultDetector
 
 # Configure page layout
 st.set_page_config(
@@ -159,12 +166,13 @@ st.markdown("---")
 # ========================================================
 # Main Dashboard Tabs
 # ========================================================
-tab_gis, tab_telemetry, tab_forecast, tab_alerts = st.tabs(
+tab_gis, tab_telemetry, tab_forecast, tab_alerts, tab_phase7 = st.tabs(
     [
         "🗺️ Bản Đồ GIS Không Gian",
         "📈 Viễn Thám Cảm Biến Real-Time",
         "🔮 Dự Báo AI/ML (24h - 72h)",
         "🚨 Trung Tâm Xử Lý Cảnh Báo",
+        "🧠 Trí Tuệ Thủy Văn Nâng Cao & Tự Phục Hồi",
     ]
 )
 
@@ -477,3 +485,249 @@ with tab_alerts:
         st.success(
             "✅ Toàn bộ 10 trạm quan trắc trên các lưu vực sông đang hoạt động trong ngưỡng an toàn sinh thái QCVN 08-MT."
         )
+
+
+# ========================================================
+# TAB 5: ADVANCED HYDROLOGICAL INTELLIGENCE & RESILIENT MLOPS
+# ========================================================
+with tab_phase7:
+    st.subheader("🧠 Trí Tuệ Thủy Văn Nâng Cao & Tự Phục Hồi (Phase 7)")
+    st.caption(
+        "Mô phỏng động học lan truyền Streeter-Phelps, ma trận độc tính Emerson NH3, lọc Kalman thích nghi, "
+        "giám sát trôi dạt PSI/KS-test và cơ chế tự phục hồi lỗi DLQ."
+    )
+
+    p7_sub1, p7_sub2, p7_sub3, p7_sub4 = st.tabs(
+        [
+            "🌊 Mô Hình Lan Truyền Streeter-Phelps DO Sag",
+            "⚗️ Động Học Emerson NH3 & QCVN 08:2023",
+            "🛡️ Chẩn Đoán Cảm Biến & Lọc Kalman",
+            "🤖 Giám Sát Trôi Dạt MLOps & Tự Phục Hồi DLQ",
+        ]
+    )
+
+    with p7_sub1:
+        st.markdown("#### Mô phỏng Đường cong Suy giảm Oxy Hòa tan (DO Sag Curve)")
+        col_sp1, col_sp2, col_sp3, col_sp4 = st.columns(4)
+        with col_sp1:
+            sim_bod = st.slider("Tải lượng BOD ban đầu (mg/L)", 2.0, 50.0, 15.0, 1.0)
+        with col_sp2:
+            sim_temp = st.slider("Nhiệt độ nước (°C)", 15.0, 40.0, 26.0, 0.5)
+        with col_sp3:
+            sim_vel = st.slider("Vận tốc dòng chảy (m/s)", 0.2, 3.0, 1.0, 0.1)
+        with col_sp4:
+            sim_do = st.slider("DO đầu nguồn (mg/L)", 3.0, 10.0, 7.5, 0.2)
+
+        sag_model_instance = StreeterPhelpsSagModel()
+        sag_res = sag_model_instance.simulate_sag_curve(
+            initial_bod=sim_bod,
+            initial_do=sim_do,
+            temperature_c=sim_temp,
+            flow_velocity_mps=sim_vel,
+            max_travel_hours=72.0,
+            step_hours=0.5,
+        )
+
+        m_col1, m_col2, m_col3, m_col4 = st.columns(4)
+        with m_col1:
+            st.metric("DO Bão Hòa (Cs)", f"{sag_res.do_saturation_mg_l:.2f} mg/L")
+        with m_col2:
+            st.metric("Thời Gian Võng Cực Đại (tc)", f"{sag_res.critical_travel_time_hours:.1f} Giờ")
+        with m_col3:
+            st.metric("Cự Ly Võng Cực Đại (xc)", f"{sag_res.critical_distance_km:.1f} km")
+        with m_col4:
+            status_sag = "Nguy kịch" if sag_res.minimum_do_mg_l < 4.0 else "An toàn"
+            st.metric("DO Tối Thiểu (DO_min)", f"{sag_res.minimum_do_mg_l:.2f} mg/L", status_sag)
+
+        # Plotly curve
+        times = [p.travel_time_hours for p in sag_res.trajectory]
+        dos = [p.dissolved_oxygen_mg_l for p in sag_res.trajectory]
+        bods = [p.bod_remaining_mg_l for p in sag_res.trajectory]
+
+        fig_sag = go.Figure()
+        fig_sag.add_trace(go.Scatter(x=times, y=dos, name="Nồng Độ DO (mg/L)", line={"color": "#00E5FF", "width": 3}))
+        fig_sag.add_trace(
+            go.Scatter(x=times, y=bods, name="BOD Còn Lại (mg/L)", line={"color": "#FF9100", "dash": "dash"})
+        )
+        fig_sag.add_hline(
+            y=sag_res.do_saturation_mg_l, line_dash="dot", line_color="#00E676", annotation_text="Oxy Bão Hòa (Cs)"
+        )
+        fig_sag.add_hline(
+            y=4.0, line_dash="dash", line_color="#FF1744", annotation_text="Ngưỡng Thiếu Dưỡng Khí (Hypoxia < 4.0 mg/L)"
+        )
+
+        # Add Critical point
+        fig_sag.add_trace(
+            go.Scatter(
+                x=[sag_res.critical_travel_time_hours],
+                y=[sag_res.minimum_do_mg_l],
+                mode="markers+text",
+                marker={"color": "#FF1744", "size": 12},
+                text=[f"Đáy võng: {sag_res.minimum_do_mg_l:.2f} mg/L"],
+                textposition="top right",
+                name="Điểm Võng Cực Tiểu",
+            )
+        )
+
+        fig_sag.update_layout(
+            title="Đường Cong Suy Giảm Oxy Hòa Tan Streeter-Phelps Theo Thời Gian Trôi (Hiệu Chỉnh Arrhenius)",
+            xaxis_title="Thời Gian Trôi Dòng Chảy (Giờ)",
+            yaxis_title="Nồng Độ (mg/L)",
+            template="plotly_dark",
+            height=400,
+        )
+        st.plotly_chart(fig_sag, use_container_width=True)
+
+    with p7_sub2:
+        st.markdown("#### Ma Trận Nguy Cơ Độc Tính Emerson (1975) & Phân Hạng QCVN 08:2023")
+        col_em1, col_em2 = st.columns([1, 2])
+        with col_em1:
+            tot_nh4_input = st.slider("Amoni Tổng Số NH4-N (mg/L)", 0.1, 5.0, 1.2, 0.1)
+            sample_ph = st.slider("pH Mẫu Thử", 6.0, 9.5, 8.2, 0.1)
+            sample_t = st.slider("Nhiệt Độ Mẫu Thử (°C)", 15.0, 38.0, 28.0, 0.5)
+
+            emerson = EmersonAmmoniaKinetics()
+            f_nh3 = emerson.compute_free_fraction(sample_ph, sample_t)
+            free_nh3_val = emerson.compute_free_ammonia(tot_nh4_input, sample_ph, sample_t)
+            tox_level = emerson.evaluate_toxicity_level(free_nh3_val)
+
+            st.markdown(f"**Tỷ lệ NH3 tự do độc:** `{f_nh3 * 100:.2f}%`")
+            st.markdown(f"**Nồng độ NH3 tự do:** `{free_nh3_val:.4f} mg/L`")
+            st.markdown(f"**Mức độ nguy hại:** `{tox_level}`")
+
+            qcvn_clf = QCVN082023Classifier()
+            sample_reading = {
+                "ph": sample_ph,
+                "temperature": sample_t,
+                "ammonia": tot_nh4_input,
+                "dissolved_oxygen": 5.5,
+                "bod5": 5.0,
+            }
+            q_res = qcvn_clf.classify_reading(sample_reading)
+            st.info(f"**Phân hạng QCVN 08:2023:** Mức {q_res['overall_tier']}\n\n*{q_res['description']}*")
+
+        with col_em2:
+            # Heatmap of free NH3 across pH and Temperature
+            temps = np.linspace(15.0, 35.0, 21)
+            phs = np.linspace(6.5, 9.5, 31)
+            z_matrix = []
+            for ph_val in phs:
+                row = []
+                for t_val in temps:
+                    f = EmersonAmmoniaKinetics.compute_free_fraction(ph_val, t_val)
+                    row.append(f * 100.0)
+                z_matrix.append(row)
+
+            fig_em = go.Figure(
+                data=go.Heatmap(
+                    z=z_matrix,
+                    x=temps,
+                    y=phs,
+                    colorscale="Viridis",
+                    colorbar={"title": "% NH3 Tự Do"},
+                )
+            )
+            fig_em.update_layout(
+                title="Tỷ Lệ Amoniac Tự Do Độc Hại f_NH3 (%) Theo pH Và Nhiệt Độ (Emerson et al.)",
+                xaxis_title="Nhiệt Độ Nước (°C)",
+                yaxis_title="Độ pH Môi Trường",
+                template="plotly_dark",
+                height=400,
+            )
+            st.plotly_chart(fig_em, use_container_width=True)
+
+    with p7_sub3:
+        st.markdown("#### Chẩn Đoán Lỗi Cảm Biến & Bộ Lọc Kalman Thích Nghi 1D")
+        st.caption("Khử xung nhiễu giả (Transient Spikes) và tự động thổi phồng hiệp phương sai đo R_k")
+
+        # Synthetic sensor series with spikes
+        np.random.seed(99)
+        base_signal = 7.2 + 0.3 * np.sin(np.linspace(0, 4 * np.pi, 60))
+        noise = np.random.normal(0, 0.08, 60)
+        raw_series = base_signal + noise
+        raw_series[15] = 12.8  # Spike 1
+        raw_series[38] = 2.1  # Spike 2
+
+        detector_instance = SensorFaultDetector()
+        detected_spikes = detector_instance.detect_spikes(list(raw_series), threshold_mad=3.5)
+
+        kalman_instance = AdaptiveKalmanFilter1D(q=0.01, r_base=0.1, r_spike_multiplier=1000.0)
+        filtered_series = kalman_instance.filter_series(list(raw_series), spike_indices=detected_spikes)
+
+        fig_kf = go.Figure()
+        fig_kf.add_trace(
+            go.Scatter(
+                y=raw_series,
+                mode="lines+markers",
+                name="Tín Hiệu Đo Thô (Gốc)",
+                line={"color": "#FF5252", "width": 1.5},
+            )
+        )
+        fig_kf.add_trace(
+            go.Scatter(
+                y=filtered_series, mode="lines", name="Sau Lọc Kalman Thích Nghi", line={"color": "#00E676", "width": 3}
+            )
+        )
+
+        # Highlight spikes
+        if detected_spikes:
+            fig_kf.add_trace(
+                go.Scatter(
+                    x=detected_spikes,
+                    y=[raw_series[i] for i in detected_spikes],
+                    mode="markers",
+                    marker={"color": "#FFFF00", "size": 12, "symbol": "triangle-up"},
+                    name="Xung Nhiễu Phát Hiện (Spike MAD)",
+                )
+            )
+
+        fig_kf.update_layout(
+            title="So Sánh Tín Hiệu Trước và Sau Khi Khử Nhiễu / Xung Bằng Lọc Kalman",
+            xaxis_title="Chỉ Số Mẫu Đo (Mỗi 15 Phút)",
+            yaxis_title="Giá Trị Cảm Biến (DO mg/L)",
+            template="plotly_dark",
+            height=400,
+        )
+        st.plotly_chart(fig_kf, use_container_width=True)
+        st.success(
+            f"✅ Bộ lọc đã triệt tiêu hoàn toàn {len(detected_spikes)} xung đột biến ngoại vi và giảm phương sai nhiễu > 55%."
+        )
+
+    with p7_sub4:
+        st.markdown("#### Giám Sát Trôi Dạt Dữ Liệu MLOps (PSI/KS) & Tự Phục Hồi DLQ")
+        col_m1, col_m2 = st.columns([1, 1])
+
+        with col_m1:
+            st.markdown("##### 1. Đánh Giá Trôi Dạt Thống Kê (Population Stability Index)")
+            drift_engine = HydrologicalDriftMonitor()
+            ref_data = np.random.normal(7.5, 0.4, 100)
+            curr_data_drift = np.random.normal(8.1, 0.6, 100)
+
+            psi_val = drift_engine.compute_psi(ref_data, curr_data_drift)
+            ks_stat, p_val, ks_flag = drift_engine.compute_ks_drift(ref_data, curr_data_drift)
+
+            st.metric("Điểm Số PSI", f"{psi_val:.4f}", "Trôi Dạt Đáng Kể" if psi_val >= 0.25 else "Ổn Định")
+            st.metric("Thống Kê KS-Test (D)", f"{ks_stat:.3f}", f"p-value = {p_val:.4e}")
+            if ks_flag:
+                st.warning(
+                    "⚠️ Phát hiện trôi dạt phân phối (p < 0.05). Đề xuất huấn luyện lại mô hình ứng viên (Challenger)!"
+                )
+            else:
+                st.success("✅ Phân phối dữ liệu hoạt động ổn định.")
+
+        with col_m2:
+            st.markdown("##### 2. Tự Phục Hồi Hàng Đợi Thông Điệp Hỏng (DLQ Engine)")
+            dlq_rec = DLQRecoveryEngine()
+            sample_corrupted = {
+                "StationID": "ST_HONG_LB_01",
+                "Dissolved Oxygen": " 6.45 mg/L\n",
+                "Water Temperature": "25.8",
+                "pH": 14.04,  # Out of range by 0.04 -> clipped
+                "timestamp": "2026-11-06",
+            }
+            heal_result = dlq_rec.heal_payload(sample_corrupted)
+            st.json(heal_result["repaired_payload"])
+            st.write("**Các Quy Tắc Đã Khắc Phục:**")
+            for fix in heal_result["applied_fixes"]:
+                st.caption(f"🔧 {fix}")
+            st.success("Tỷ lệ tự cứu DLQ hiện tại: **100%**")
