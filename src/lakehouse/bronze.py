@@ -28,15 +28,17 @@ logger = logging.getLogger("LakehouseBronze")
 
 
 # Schema definition for Bronze Raw Table
-BRONZE_SCHEMA = StructType([
-    StructField("kafka_key", StringType(), True),
-    StructField("raw_payload", StringType(), False),
-    StructField("kafka_timestamp", TimestampType(), True),
-    StructField("kafka_partition", IntegerType(), True),
-    StructField("kafka_offset", LongType(), True),
-    StructField("ingest_timestamp", TimestampType(), False),
-    StructField("ingest_date", StringType(), False),
-])
+BRONZE_SCHEMA = StructType(
+    [
+        StructField("kafka_key", StringType(), True),
+        StructField("raw_payload", StringType(), False),
+        StructField("kafka_timestamp", TimestampType(), True),
+        StructField("kafka_partition", IntegerType(), True),
+        StructField("kafka_offset", LongType(), True),
+        StructField("ingest_timestamp", TimestampType(), False),
+        StructField("ingest_date", StringType(), False),
+    ]
+)
 
 
 def transform_kafka_to_bronze(kafka_df: DataFrame) -> DataFrame:
@@ -64,24 +66,26 @@ def start_bronze_streaming_job(
     logger.info("Connecting to Kafka topic '%s' at %s...", kafka_topic, kafka_bootstrap)
     logger.info("Bronze Delta Lake Target: %s", bronze_output_path)
 
-    raw_stream = spark.readStream \
-        .format("kafka") \
-        .option("kafka.bootstrap.servers", kafka_bootstrap) \
-        .option("subscribe", kafka_topic) \
-        .option("startingOffsets", "latest") \
-        .option("failOnDataLoss", "false") \
+    raw_stream = (
+        spark.readStream.format("kafka")
+        .option("kafka.bootstrap.servers", kafka_bootstrap)
+        .option("subscribe", kafka_topic)
+        .option("startingOffsets", "latest")
+        .option("failOnDataLoss", "false")
         .load()
+    )
 
     bronze_stream = transform_kafka_to_bronze(raw_stream)
 
-    query = bronze_stream.writeStream \
-        .format("delta") \
-        .outputMode("append") \
-        .partitionBy("ingest_date") \
-        .option("checkpointLocation", checkpoint_location) \
-        .option("mergeSchema", "true") \
-        .trigger(processingTime=trigger_interval) \
+    query = (
+        bronze_stream.writeStream.format("delta")
+        .outputMode("append")
+        .partitionBy("ingest_date")
+        .option("checkpointLocation", checkpoint_location)
+        .option("mergeSchema", "true")
+        .trigger(processingTime=trigger_interval)
         .start(bronze_output_path)
+    )
 
     logger.info("Bronze Streaming query active (ID: %s)", query.id)
     return query
@@ -97,10 +101,6 @@ def write_bronze_batch(
     record_count = bronze_df.count()
 
     logger.info("Writing %d raw records to Bronze Delta: %s", record_count, bronze_output_path)
-    bronze_df.write \
-        .format("delta") \
-        .mode("append") \
-        .partitionBy("ingest_date") \
-        .save(bronze_output_path)
+    bronze_df.write.format("delta").mode("append").partitionBy("ingest_date").save(bronze_output_path)
 
     return record_count

@@ -6,10 +6,10 @@ Runs periodic data quality assertions on the Silver Lakehouse layer:
 3. Produces structured audit report and alerts on threshold violations.
 """
 
-from datetime import datetime, timedelta
 import logging
 import os
 import sys
+from datetime import UTC, datetime, timedelta
 
 from airflow import DAG
 from airflow.operators.python import PythonOperator
@@ -44,20 +44,22 @@ def execute_data_quality_audit(**context) -> str:
     # In production, this queries the latest partition from Delta Lake
     # For CI and scheduled execution, load a representative batch
     sample_records = []
-    now_iso = datetime.utcnow().strftime("%Y-%m-%dT%H:%M:%SZ")
+    now_iso = datetime.now(UTC).strftime("%Y-%m-%dT%H:%M:%SZ")
 
     for st in REFERENCE_STATIONS:
-        sample_records.append({
-            "station_id": st["station_id"],
-            "river_name": st["river_name"],
-            "timestamp": now_iso,
-            "temperature": 24.5,
-            "ph": 7.3,
-            "dissolved_oxygen": 7.2,
-            "conductivity": 350.0,
-            "ammonia": 0.12,
-            "turbidity_ntu": 25.0,
-        })
+        sample_records.append(
+            {
+                "station_id": st["station_id"],
+                "river_name": st["river_name"],
+                "timestamp": now_iso,
+                "temperature": 24.5,
+                "ph": 7.3,
+                "dissolved_oxygen": 7.2,
+                "conductivity": 350.0,
+                "ammonia": 0.12,
+                "turbidity_ntu": 25.0,
+            }
+        )
 
     report = auditor.audit_records(sample_records)
     logger.info("Quality Audit Results:\n%s", report.to_json())
@@ -73,11 +75,10 @@ with DAG(
     default_args=default_args,
     description="Automated Data Quality Audit and Anomaly Integrity Gate",
     schedule_interval="0 */6 * * *",  # Every 6 hours
-    start_date=datetime(2026, 1, 1),
+    start_date=datetime(2026, 1, 1, tzinfo=UTC),
     catchup=False,
     tags=["quality", "lakehouse", "audit", "governance"],
 ) as dag:
-
     audit_task = PythonOperator(
         task_id="run_silver_quality_audit",
         python_callable=execute_data_quality_audit,

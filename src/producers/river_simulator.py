@@ -14,8 +14,16 @@ import os
 import random
 import sys
 import time
-from datetime import datetime, timezone
-from typing import Any, Dict, List, Optional, Tuple
+from datetime import UTC, datetime
+from typing import Any, ClassVar
+
+try:
+    from kafka.errors import KafkaError
+
+    from kafka import KafkaProducer
+except ImportError:
+    KafkaProducer = None  # type: ignore[assignment,misc]
+    KafkaError = Exception  # type: ignore[assignment,misc]
 
 # Support running directly or as a package module
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "../..")))
@@ -47,7 +55,7 @@ class HydrologicalPhysicsEngine:
         t = max(0.0, min(temp_celsius, 45.0))
         # Approximation formula for 100% saturation at sea level
         # At 0°C ~ 14.6 mg/L, 20°C ~ 9.1 mg/L, 30°C ~ 7.5 mg/L
-        do_sat = 14.652 - 0.41022 * t + 0.007991 * (t ** 2) - 0.000077774 * (t ** 3)
+        do_sat = 14.652 - 0.41022 * t + 0.007991 * (t**2) - 0.000077774 * (t**3)
         return max(5.0, round(do_sat, 2))
 
     @staticmethod
@@ -60,7 +68,7 @@ class HydrologicalPhysicsEngine:
         return round(base_temp + diurnal_delta + noise, 1)
 
     @staticmethod
-    def compute_ccme_wqi(readings: Dict[str, float]) -> Tuple[float, str]:
+    def compute_ccme_wqi(readings: dict[str, float]) -> tuple[float, str]:
         """Compute Canadian Council of Ministers of the Environment (CCME) Water Quality Index.
 
         Evaluates objectives based on QCVN 08-MT:2015/BTNMT (Surface Water Regulation).
@@ -113,9 +121,9 @@ class HydrologicalPhysicsEngine:
 
         # F3: Amplitude (Normalized Sum of Excursions)
         nse = sum_excursions / total_tests
-        f3 = (nse / (0.01 * nse + 0.01))
+        f3 = nse / (0.01 * nse + 0.01)
 
-        ccme = 100.0 - (math.sqrt(f1 ** 2 + f2 ** 2 + min(f3, 100.0) ** 2) / 1.732)
+        ccme = 100.0 - (math.sqrt(f1**2 + f2**2 + min(f3, 100.0) ** 2) / 1.732)
         score = round(max(0.0, min(ccme, 100.0)), 1)
 
         if score >= 95.0:
@@ -136,52 +144,102 @@ class RiverTelemetryGenerator:
     """Generates continuous realistic telemetry streams with anomaly injection."""
 
     # Specific baseline parameters per river
-    RIVER_BASELINES: Dict[str, Dict[str, Any]] = {
+    RIVER_BASELINES: ClassVar[dict[str, dict[str, Any]]] = {
         "Sông Đà": {
-            "base_temp": 21.0, "ph": 7.4, "conductivity": 220.0,
-            "ammonia": 0.04, "bod5": 1.2, "turbidity": 15.0, "flow_rate": 2200.0,
+            "base_temp": 21.0,
+            "ph": 7.4,
+            "conductivity": 220.0,
+            "ammonia": 0.04,
+            "bod5": 1.2,
+            "turbidity": 15.0,
+            "flow_rate": 2200.0,
         },
         "Sông Lô": {
-            "base_temp": 23.0, "ph": 7.3, "conductivity": 280.0,
-            "ammonia": 0.08, "bod5": 1.8, "turbidity": 35.0, "flow_rate": 1100.0,
+            "base_temp": 23.0,
+            "ph": 7.3,
+            "conductivity": 280.0,
+            "ammonia": 0.08,
+            "bod5": 1.8,
+            "turbidity": 35.0,
+            "flow_rate": 1100.0,
         },
         "Sông Hồng": {
-            "base_temp": 24.5, "ph": 7.2, "conductivity": 380.0,
-            "ammonia": 0.15, "bod5": 2.5, "turbidity": 80.0, "flow_rate": 3500.0,
+            "base_temp": 24.5,
+            "ph": 7.2,
+            "conductivity": 380.0,
+            "ammonia": 0.15,
+            "bod5": 2.5,
+            "turbidity": 80.0,
+            "flow_rate": 3500.0,
         },
         "Sông Hương": {
-            "base_temp": 25.0, "ph": 7.1, "conductivity": 180.0,
-            "ammonia": 0.06, "bod5": 1.5, "turbidity": 20.0, "flow_rate": 450.0,
+            "base_temp": 25.0,
+            "ph": 7.1,
+            "conductivity": 180.0,
+            "ammonia": 0.06,
+            "bod5": 1.5,
+            "turbidity": 20.0,
+            "flow_rate": 450.0,
         },
         "Sông Hàn": {
-            "base_temp": 26.0, "ph": 7.5, "conductivity": 420.0,
-            "ammonia": 0.12, "bod5": 2.2, "turbidity": 25.0, "flow_rate": 380.0,
+            "base_temp": 26.0,
+            "ph": 7.5,
+            "conductivity": 420.0,
+            "ammonia": 0.12,
+            "bod5": 2.2,
+            "turbidity": 25.0,
+            "flow_rate": 380.0,
         },
         "Sông Sài Gòn": {
-            "base_temp": 28.0, "ph": 6.8, "conductivity": 550.0,
-            "ammonia": 0.35, "bod5": 4.5, "turbidity": 65.0, "flow_rate": 750.0,
+            "base_temp": 28.0,
+            "ph": 6.8,
+            "conductivity": 550.0,
+            "ammonia": 0.35,
+            "bod5": 4.5,
+            "turbidity": 65.0,
+            "flow_rate": 750.0,
         },
         "Sông Đồng Nai": {
-            "base_temp": 27.5, "ph": 7.0, "conductivity": 480.0,
-            "ammonia": 0.22, "bod5": 3.2, "turbidity": 45.0, "flow_rate": 1800.0,
+            "base_temp": 27.5,
+            "ph": 7.0,
+            "conductivity": 480.0,
+            "ammonia": 0.22,
+            "bod5": 3.2,
+            "turbidity": 45.0,
+            "flow_rate": 1800.0,
         },
         "Sông Tiền": {
-            "base_temp": 28.5, "ph": 7.3, "conductivity": 520.0,
-            "ammonia": 0.18, "bod5": 2.8, "turbidity": 90.0, "flow_rate": 6500.0,
+            "base_temp": 28.5,
+            "ph": 7.3,
+            "conductivity": 520.0,
+            "ammonia": 0.18,
+            "bod5": 2.8,
+            "turbidity": 90.0,
+            "flow_rate": 6500.0,
         },
         "Sông Hậu": {
-            "base_temp": 28.5, "ph": 7.2, "conductivity": 510.0,
-            "ammonia": 0.16, "bod5": 2.6, "turbidity": 85.0, "flow_rate": 5800.0,
+            "base_temp": 28.5,
+            "ph": 7.2,
+            "conductivity": 510.0,
+            "ammonia": 0.16,
+            "bod5": 2.6,
+            "turbidity": 85.0,
+            "flow_rate": 5800.0,
         },
         "Sông Mã": {
-            "base_temp": 23.5, "ph": 7.3, "conductivity": 310.0,
-            "ammonia": 0.09, "bod5": 1.9, "turbidity": 40.0, "flow_rate": 850.0,
+            "base_temp": 23.5,
+            "ph": 7.3,
+            "conductivity": 310.0,
+            "ammonia": 0.09,
+            "bod5": 1.9,
+            "turbidity": 40.0,
+            "flow_rate": 850.0,
         },
     }
 
     def __init__(
         self,
-        stations: Optional[List[Dict[str, Any]]] = None,
+        stations: list[dict[str, Any]] | None = None,
         anomaly_probability: float = 0.08,
     ):
         self.stations = stations or REFERENCE_STATIONS
@@ -190,12 +248,12 @@ class RiverTelemetryGenerator:
 
     def generate_single_reading(
         self,
-        station: Dict[str, Any],
-        override_timestamp: Optional[datetime] = None,
-        force_anomaly: Optional[str] = None,
+        station: dict[str, Any],
+        override_timestamp: datetime | None = None,
+        force_anomaly: str | None = None,
     ) -> RiverSensorReading:
         """Generate one physically grounded reading for the given station."""
-        now = override_timestamp or datetime.now(timezone.utc)
+        now = override_timestamp or datetime.now(UTC)
         hour = now.hour
         iso_timestamp = now.strftime("%Y-%m-%dT%H:%M:%SZ")
 
@@ -227,12 +285,14 @@ class RiverTelemetryGenerator:
         trigger_anomaly = force_anomaly or (random.random() < self.anomaly_prob)
 
         if trigger_anomaly:
-            scenario = force_anomaly or random.choice([
-                "INDUSTRIAL_ACID_DISCHARGE",
-                "UNTREATED_SEWAGE_DUMP",
-                "FLASH_RUNOFF_EROSION",
-                "SUDDEN_ANOXIA",
-            ])
+            scenario = force_anomaly or random.choice(
+                [
+                    "INDUSTRIAL_ACID_DISCHARGE",
+                    "UNTREATED_SEWAGE_DUMP",
+                    "FLASH_RUNOFF_EROSION",
+                    "SUDDEN_ANOXIA",
+                ]
+            )
             is_anomaly = True
 
             if scenario == "INDUSTRIAL_ACID_DISCHARGE":
@@ -293,7 +353,7 @@ class RiverTelemetryGenerator:
             anomaly_reason=anomaly_reason,
         )
 
-    def generate_batch(self, count: int = 10) -> List[Dict[str, Any]]:
+    def generate_batch(self, count: int = 10) -> list[dict[str, Any]]:
         """Generate a batch of validated sensor records."""
         records = []
         for i in range(count):
@@ -308,7 +368,7 @@ def run_simulator(
     topic: str = DEFAULT_TOPIC_SENSORS_RAW,
     delay: float = 1.0,
     dry_run: bool = False,
-    max_records: Optional[int] = None,
+    max_records: int | None = None,
 ):
     """Main execution loop for the river simulator."""
     generator = RiverTelemetryGenerator(anomaly_probability=0.08)
@@ -316,7 +376,8 @@ def run_simulator(
 
     if not dry_run:
         try:
-            from kafka import KafkaProducer
+            if KafkaProducer is None:
+                raise ImportError("kafka-python package not available")
 
             producer = KafkaProducer(
                 bootstrap_servers=kafka_server,
@@ -325,7 +386,7 @@ def run_simulator(
                 retries=3,
             )
             logger.info("Connected to Kafka Producer at %s (Topic: %s)", kafka_server, topic)
-        except Exception as e:
+        except (KafkaError, OSError, ConnectionError, ImportError) as e:
             logger.error("Failed to connect to Kafka at %s: %s", kafka_server, e)
             logger.info("Switching to DRY-RUN mode for console output...")
             dry_run = True

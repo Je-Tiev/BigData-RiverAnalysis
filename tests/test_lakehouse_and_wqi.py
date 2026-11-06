@@ -9,7 +9,7 @@ import math
 import os
 import sys
 import unittest
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
 
@@ -19,7 +19,7 @@ class MedallionLogicSimulator:
 
     @staticmethod
     def bronze_transform(raw_key: str, raw_payload: str, offset: int = 101) -> dict:
-        now = datetime.now(timezone.utc)
+        now = datetime.now(UTC)
         return {
             "kafka_key": raw_key,
             "raw_payload": raw_payload,
@@ -33,7 +33,7 @@ class MedallionLogicSimulator:
         """Simulates Silver parsing, normalization, bounds check, and deduplication."""
         try:
             parsed = json.loads(bronze_row["raw_payload"])
-        except Exception:
+        except (json.JSONDecodeError, TypeError):
             return False, {}
 
         station_id = parsed.get("station_id") or parsed.get("WaterbodyName")
@@ -61,8 +61,8 @@ class MedallionLogicSimulator:
         ts_clean = event_ts.replace("Z", "+00:00") if "Z" in event_ts else event_ts
         try:
             dt = datetime.fromisoformat(ts_clean)
-        except Exception:
-            dt = datetime.strptime(event_ts, "%Y-%m-%d")
+        except (ValueError, TypeError):
+            dt = datetime.strptime(event_ts, "%Y-%m-%d").replace(tzinfo=UTC)
 
         return True, {
             "station_id": station_id,
@@ -111,19 +111,21 @@ class MedallionLogicSimulator:
 
             f1 = (fails / 4.0) * 100.0
             f2 = (fails / 4.0) * 100.0
-            wqi = 100.0 - (math.sqrt(f1 ** 2 + f2 ** 2) / 1.732)
+            wqi = 100.0 - (math.sqrt(f1**2 + f2**2) / 1.732)
             wqi = round(max(0.0, min(wqi, 100.0)), 1)
 
-            gold_records.append({
-                "station_id": st,
-                "sample_count": count,
-                "avg_temperature": round(avg_temp, 2),
-                "avg_ph": round(avg_ph, 2),
-                "avg_do": round(avg_do, 2),
-                "avg_ammonia": round(avg_amm, 3),
-                "wqi_score": wqi,
-                "quality_label": "Good" if wqi >= 80.0 else "Fair" if wqi >= 65.0 else "Poor",
-            })
+            gold_records.append(
+                {
+                    "station_id": st,
+                    "sample_count": count,
+                    "avg_temperature": round(avg_temp, 2),
+                    "avg_ph": round(avg_ph, 2),
+                    "avg_do": round(avg_do, 2),
+                    "avg_ammonia": round(avg_amm, 3),
+                    "wqi_score": wqi,
+                    "quality_label": "Good" if wqi >= 80.0 else "Fair" if wqi >= 65.0 else "Poor",
+                }
+            )
         return gold_records
 
     @staticmethod
@@ -131,7 +133,7 @@ class MedallionLogicSimulator:
         """Computes lags, rolling stats, and cyclical time encodings for an ordered time series."""
         features = []
         for i, item in enumerate(series):
-            hour = datetime.fromisoformat(item["event_time"].replace("Z", "+00:00")).hour
+            hour = datetime.fromisoformat(item["event_time"]).hour
             pi = math.pi
             h_sin = math.sin(hour * 2.0 * pi / 24.0)
             h_cos = math.cos(hour * 2.0 * pi / 24.0)
@@ -141,24 +143,26 @@ class MedallionLogicSimulator:
             delta_do = (item["dissolved_oxygen"] - do_lag_1) if do_lag_1 is not None else None
 
             # Rolling 3 mean
-            window_slice = series[max(0, i - 2):i + 1]
+            window_slice = series[max(0, i - 2) : i + 1]
             rolling_mean = sum(x["dissolved_oxygen"] for x in window_slice) / len(window_slice)
 
             # Target next 1
             target_next = series[i + 1]["dissolved_oxygen"] if i + 1 < len(series) else None
 
-            features.append({
-                "station_id": item["station_id"],
-                "event_time": item["event_time"],
-                "dissolved_oxygen": item["dissolved_oxygen"],
-                "do_lag_1": do_lag_1,
-                "do_lag_2": do_lag_2,
-                "delta_do": delta_do,
-                "do_rolling_mean_3": round(rolling_mean, 2),
-                "hour_sin": round(h_sin, 4),
-                "hour_cos": round(h_cos, 4),
-                "target_do_next_1": target_next,
-            })
+            features.append(
+                {
+                    "station_id": item["station_id"],
+                    "event_time": item["event_time"],
+                    "dissolved_oxygen": item["dissolved_oxygen"],
+                    "do_lag_1": do_lag_1,
+                    "do_lag_2": do_lag_2,
+                    "delta_do": delta_do,
+                    "do_rolling_mean_3": round(rolling_mean, 2),
+                    "hour_sin": round(h_sin, 4),
+                    "hour_cos": round(h_cos, 4),
+                    "target_do_next_1": target_next,
+                }
+            )
         return features
 
 
@@ -177,14 +181,16 @@ class TestMedallionTransformations(unittest.TestCase):
         self.assertRegex(row["ingest_date"], r"^\d{4}-\d{2}-\d{2}$")
 
     def test_silver_cleans_and_extracts_partitions(self):
-        raw = json.dumps({
-            "station_id": "ST_HONG_01",
-            "timestamp": "2026-11-04T14:30:00Z",
-            "temperature": 26.5,
-            "ph": 7.4,
-            "dissolved_oxygen": 7.8,
-            "ammonia": 0.12,
-        })
+        raw = json.dumps(
+            {
+                "station_id": "ST_HONG_01",
+                "timestamp": "2026-11-04T14:30:00Z",
+                "temperature": 26.5,
+                "ph": 7.4,
+                "dissolved_oxygen": 7.8,
+                "ammonia": 0.12,
+            }
+        )
         bronze_row = self.sim.bronze_transform("ST_HONG_01", raw)
         is_valid, silver_rec = self.sim.silver_transform_record(bronze_row)
 
@@ -195,21 +201,44 @@ class TestMedallionTransformations(unittest.TestCase):
         self.assertEqual(silver_rec["ph"], 7.4)
 
     def test_silver_rejects_corrupted_ph_bounds(self):
-        raw = json.dumps({
-            "station_id": "ST_HONG_01",
-            "timestamp": "2026-11-04T14:30:00Z",
-            "ph": 18.5,  # Invalid pH (> 14)
-            "dissolved_oxygen": 7.0,
-        })
+        raw = json.dumps(
+            {
+                "station_id": "ST_HONG_01",
+                "timestamp": "2026-11-04T14:30:00Z",
+                "ph": 18.5,  # Invalid pH (> 14)
+                "dissolved_oxygen": 7.0,
+            }
+        )
         bronze_row = self.sim.bronze_transform("ST_HONG_01", raw)
         is_valid, _ = self.sim.silver_transform_record(bronze_row)
         self.assertFalse(is_valid)
 
     def test_gold_computes_wqi_and_aggregates(self):
         records = [
-            {"station_id": "ST_DA_01", "temperature": 22.0, "ph": 7.3, "dissolved_oxygen": 8.5, "ammonia": 0.05, "turbidity_ntu": 15.0},
-            {"station_id": "ST_DA_01", "temperature": 22.4, "ph": 7.4, "dissolved_oxygen": 8.3, "ammonia": 0.06, "turbidity_ntu": 16.0},
-            {"station_id": "ST_SAIGON_02", "temperature": 28.0, "ph": 6.8, "dissolved_oxygen": 4.2, "ammonia": 0.85, "turbidity_ntu": 75.0},
+            {
+                "station_id": "ST_DA_01",
+                "temperature": 22.0,
+                "ph": 7.3,
+                "dissolved_oxygen": 8.5,
+                "ammonia": 0.05,
+                "turbidity_ntu": 15.0,
+            },
+            {
+                "station_id": "ST_DA_01",
+                "temperature": 22.4,
+                "ph": 7.4,
+                "dissolved_oxygen": 8.3,
+                "ammonia": 0.06,
+                "turbidity_ntu": 16.0,
+            },
+            {
+                "station_id": "ST_SAIGON_02",
+                "temperature": 28.0,
+                "ph": 6.8,
+                "dissolved_oxygen": 4.2,
+                "ammonia": 0.85,
+                "turbidity_ntu": 75.0,
+            },
         ]
         gold = self.sim.compute_gold_hourly(records)
         self.assertEqual(len(gold), 2)

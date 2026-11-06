@@ -5,10 +5,10 @@ analysis, real-time sensor telemetry, AI/ML forecasting, and emergency incident 
 Built with Streamlit, Folium, and Plotly.
 """
 
-from datetime import datetime, timedelta, timezone
 import os
 import sys
-from typing import Any, Dict, List
+from datetime import UTC, datetime, timedelta
+from typing import Any
 
 import streamlit as st
 
@@ -73,10 +73,10 @@ generator, detector, forecaster, alert_mgr = load_ml_components()
 # ========================================================
 # Helper Functions: Live Telemetry & Historical Series
 # ========================================================
-def get_current_network_state() -> List[Dict[str, Any]]:
+def get_current_network_state() -> list[dict[str, Any]]:
     """Generates the latest state snapshot across all 10 river stations."""
     network_data = []
-    now = datetime.now(timezone.utc)
+    now = datetime.now(UTC)
     for st_meta in REFERENCE_STATIONS:
         reading = generator.generate_single_reading(st_meta, override_timestamp=now)
         d = reading.to_dict()
@@ -84,10 +84,10 @@ def get_current_network_state() -> List[Dict[str, Any]]:
     return network_data
 
 
-def generate_recent_series(station_meta: Dict[str, Any], hours: int = 24) -> List[Dict[str, Any]]:
+def generate_recent_series(station_meta: dict[str, Any], hours: int = 24) -> list[dict[str, Any]]:
     """Generates a realistic 24h historical hourly time series for a station."""
     series = []
-    base_time = datetime.now(timezone.utc) - timedelta(hours=hours)
+    base_time = datetime.now(UTC) - timedelta(hours=hours)
     for h in range(hours + 1):
         ts = base_time + timedelta(hours=h)
         reading = generator.generate_single_reading(station_meta, override_timestamp=ts)
@@ -113,8 +113,8 @@ st.sidebar.markdown("---")
 st.sidebar.subheader("Bộ Lọc Phân Vùng Lưu Vực")
 basin_filter = st.sidebar.multiselect(
     "Lưu vực sông:",
-    list(set(s["basin_name"] for s in REFERENCE_STATIONS)),
-    default=list(set(s["basin_name"] for s in REFERENCE_STATIONS)),
+    list({s["basin_name"] for s in REFERENCE_STATIONS}),
+    default=list({s["basin_name"] for s in REFERENCE_STATIONS}),
 )
 
 st.sidebar.markdown("---")
@@ -159,12 +159,14 @@ st.markdown("---")
 # ========================================================
 # Main Dashboard Tabs
 # ========================================================
-tab_gis, tab_telemetry, tab_forecast, tab_alerts = st.tabs([
-    "🗺️ Bản Đồ GIS Không Gian",
-    "📈 Viễn Thám Cảm Biến Real-Time",
-    "🔮 Dự Báo AI/ML (24h - 72h)",
-    "🚨 Trung Tâm Xử Lý Cảnh Báo",
-])
+tab_gis, tab_telemetry, tab_forecast, tab_alerts = st.tabs(
+    [
+        "🗺️ Bản Đồ GIS Không Gian",
+        "📈 Viễn Thám Cảm Biến Real-Time",
+        "🔮 Dự Báo AI/ML (24h - 72h)",
+        "🚨 Trung Tâm Xử Lý Cảnh Báo",
+    ]
+)
 
 
 # ========================================================
@@ -172,15 +174,20 @@ tab_gis, tab_telemetry, tab_forecast, tab_alerts = st.tabs([
 # ========================================================
 with tab_gis:
     st.subheader("Bản Đồ Không Gian Các Trạm Quan Trắc Lưu Vực Sông")
-    st.caption("Hiển thị vị trí thực tế, mã màu tình trạng chất lượng nước (Xanh = Tốt, Vàng = Trung bình, Đỏ = Ô nhiễm/Báo động)")
+    st.caption(
+        "Hiển thị vị trí thực tế, mã màu tình trạng chất lượng nước (Xanh = Tốt, Vàng = Trung bình, Đỏ = Ô nhiễm/Báo động)"
+    )
 
     try:
         import folium
+
         try:
             from streamlit_folium import st_folium
+
             use_st_folium = True
         except ImportError:
             from streamlit_folium import folium_static
+
             use_st_folium = False
 
         # Center map around central Vietnam (lat 16.0, lon 107.5)
@@ -205,16 +212,16 @@ with tab_gis:
 
             popup_html = f"""
             <div style="font-family: sans-serif; width: 220px;">
-                <h4 style="margin: 0; color: #1E88E5;">{station['station_name']}</h4>
-                <b>Sông:</b> {station['river_name']}<br>
-                <b>Lưu vực:</b> {station['basin_name']}<br>
+                <h4 style="margin: 0; color: #1E88E5;">{station["station_name"]}</h4>
+                <b>Sông:</b> {station["river_name"]}<br>
+                <b>Lưu vực:</b> {station["basin_name"]}<br>
                 <hr style="margin: 6px 0;">
-                <b>WQI:</b> <span style="font-size: 14px; font-weight: bold;">{score:.1f} ({station['quality_label']})</span><br>
-                <b>Oxy hòa tan (DO):</b> {station['dissolved_oxygen']} mg/L<br>
-                <b>pH:</b> {station['ph']}<br>
-                <b>Nhiệt độ:</b> {station['temperature']} °C<br>
-                <b>Ammonia:</b> {station['ammonia']} mg/L<br>
-                <b>Độ đục:</b> {station['turbidity_ntu']} NTU<br>
+                <b>WQI:</b> <span style="font-size: 14px; font-weight: bold;">{score:.1f} ({station["quality_label"]})</span><br>
+                <b>Oxy hòa tan (DO):</b> {station["dissolved_oxygen"]} mg/L<br>
+                <b>pH:</b> {station["ph"]}<br>
+                <b>Nhiệt độ:</b> {station["temperature"]} °C<br>
+                <b>Ammonia:</b> {station["ammonia"]} mg/L<br>
+                <b>Độ đục:</b> {station["turbidity_ntu"]} NTU<br>
             </div>
             """
 
@@ -234,8 +241,7 @@ with tab_gis:
         # Fallback to Streamlit native map
         st.info("Hiển thị bản đồ tọa độ trạm quan trắc:")
         map_df = [
-            {"lat": s["latitude"], "lon": s["longitude"], "station_name": s["station_name"]}
-            for s in filtered_stations
+            {"lat": s["latitude"], "lon": s["longitude"], "station_name": s["station_name"]} for s in filtered_stations
         ]
         st.map(map_df, zoom=5)
 
@@ -262,7 +268,8 @@ with tab_telemetry:
         turb_vals = [x["turbidity_ntu"] for x in hist_data]
 
         fig = make_subplots(
-            rows=2, cols=2,
+            rows=2,
+            cols=2,
             subplot_titles=(
                 "Oxy Hòa Tan (DO mg/L) vs Ngưỡng An Toàn",
                 "Độ pH Nước Sông (QCVN 08-MT)",
@@ -272,30 +279,52 @@ with tab_telemetry:
         )
 
         # Plot 1: DO
-        fig.add_trace(go.Scatter(x=timestamps, y=do_vals, name="DO (mg/L)", line=dict(color="#00E5FF", width=2)), row=1, col=1)
-        fig.add_hline(y=4.0, line_dash="dash", line_color="red", annotation_text="Ngưỡng Ngạt Cá (4.0 mg/L)", row=1, col=1)
+        fig.add_trace(
+            go.Scatter(x=timestamps, y=do_vals, name="DO (mg/L)", line={"color": "#00E5FF", "width": 2}), row=1, col=1
+        )
+        fig.add_hline(
+            y=4.0, line_dash="dash", line_color="red", annotation_text="Ngưỡng Ngạt Cá (4.0 mg/L)", row=1, col=1
+        )
 
         # Plot 2: pH
-        fig.add_trace(go.Scatter(x=timestamps, y=ph_vals, name="pH", line=dict(color="#76FF03", width=2)), row=1, col=2)
+        fig.add_trace(
+            go.Scatter(x=timestamps, y=ph_vals, name="pH", line={"color": "#76FF03", "width": 2}), row=1, col=2
+        )
         fig.add_hline(y=5.5, line_dash="dash", line_color="orange", row=1, col=2)
-        fig.add_hline(y=9.0, line_dash="dash", line_color="orange", annotation_text="Dải Cho Phép [5.5 - 9.0]", row=1, col=2)
+        fig.add_hline(
+            y=9.0, line_dash="dash", line_color="orange", annotation_text="Dải Cho Phép [5.5 - 9.0]", row=1, col=2
+        )
 
         # Plot 3: Temperature
-        fig.add_trace(go.Scatter(x=timestamps, y=temp_vals, name="Nhiệt Độ (°C)", line=dict(color="#FFD600", width=2)), row=2, col=1)
+        fig.add_trace(
+            go.Scatter(x=timestamps, y=temp_vals, name="Nhiệt Độ (°C)", line={"color": "#FFD600", "width": 2}),
+            row=2,
+            col=1,
+        )
 
         # Plot 4: Ammonia
-        fig.add_trace(go.Scatter(x=timestamps, y=amm_vals, name="Ammonia (mg/L)", line=dict(color="#FF1744", width=2)), row=2, col=2)
-        fig.add_hline(y=1.0, line_dash="dash", line_color="red", annotation_text="Ngưỡng Báo Động (1.0 mg/L)", row=2, col=2)
+        fig.add_trace(
+            go.Scatter(x=timestamps, y=amm_vals, name="Ammonia (mg/L)", line={"color": "#FF1744", "width": 2}),
+            row=2,
+            col=2,
+        )
+        fig.add_hline(
+            y=1.0, line_dash="dash", line_color="red", annotation_text="Ngưỡng Báo Động (1.0 mg/L)", row=2, col=2
+        )
 
-        fig.update_layout(height=650, template="plotly_dark", showlegend=False, margin=dict(l=20, r=20, t=40, b=20))
+        fig.update_layout(
+            height=650, template="plotly_dark", showlegend=False, margin={"l": 20, "r": 20, "t": 40, "b": 20}
+        )
         st.plotly_chart(fig, use_container_width=True)
 
     except ImportError:
-        st.line_chart({
-            "DO": [x["dissolved_oxygen"] for x in hist_data],
-            "pH": [x["ph"] for x in hist_data],
-            "Temp": [x["temperature"] for x in hist_data],
-        })
+        st.line_chart(
+            {
+                "DO": [x["dissolved_oxygen"] for x in hist_data],
+                "pH": [x["ph"] for x in hist_data],
+                "Temp": [x["temperature"] for x in hist_data],
+            }
+        )
 
 
 # ========================================================
@@ -303,7 +332,9 @@ with tab_telemetry:
 # ========================================================
 with tab_forecast:
     st.subheader(f"Mô Hình Dự Báo Đa Bước Tương Lai: {selected_station['station_name']}")
-    st.caption("Dự báo xu hướng 24h - 72h tới kèm Dải Tin Cậy 95% Confidence Interval từ Mô Hình Machine Learning Gradient Boosting")
+    st.caption(
+        "Dự báo xu hướng 24h - 72h tới kèm Dải Tin Cậy 95% Confidence Interval từ Mô Hình Machine Learning Gradient Boosting"
+    )
 
     f_col1, f_col2 = st.columns([1, 3])
     with f_col1:
@@ -346,36 +377,47 @@ with tab_forecast:
             fig_f = go.Figure()
 
             # Upper 95% CI
-            fig_f.add_trace(go.Scatter(
-                x=f_times, y=f_uppers,
-                mode="lines",
-                line=dict(width=0),
-                showlegend=False,
-                name="Dải Trên 95% CI",
-            ))
+            fig_f.add_trace(
+                go.Scatter(
+                    x=f_times,
+                    y=f_uppers,
+                    mode="lines",
+                    line={"width": 0},
+                    showlegend=False,
+                    name="Dải Trên 95% CI",
+                )
+            )
 
             # Lower 95% CI with shading
-            fig_f.add_trace(go.Scatter(
-                x=f_times, y=f_lowers,
-                mode="lines",
-                line=dict(width=0),
-                fill="tonexty",
-                fillcolor="rgba(0, 229, 255, 0.15)",
-                name="Dải Tin Cậy 95% CI",
-            ))
+            fig_f.add_trace(
+                go.Scatter(
+                    x=f_times,
+                    y=f_lowers,
+                    mode="lines",
+                    line={"width": 0},
+                    fill="tonexty",
+                    fillcolor="rgba(0, 229, 255, 0.15)",
+                    name="Dải Tin Cậy 95% CI",
+                )
+            )
 
             # Mean Prediction Line
-            fig_f.add_trace(go.Scatter(
-                x=f_times, y=f_preds,
-                mode="lines+markers",
-                line=dict(color="#00E5FF", width=3),
-                marker=dict(size=6),
-                name=f"Dự Báo {target_param}",
-            ))
+            fig_f.add_trace(
+                go.Scatter(
+                    x=f_times,
+                    y=f_preds,
+                    mode="lines+markers",
+                    line={"color": "#00E5FF", "width": 3},
+                    marker={"size": 6},
+                    name=f"Dự Báo {target_param}",
+                )
+            )
 
             # Critical threshold limit line
             if safe_bound:
-                fig_f.add_hline(y=safe_bound, line_dash="dash", line_color="red", annotation_text="Ngưỡng Cảnh Báo An Toàn")
+                fig_f.add_hline(
+                    y=safe_bound, line_dash="dash", line_color="red", annotation_text="Ngưỡng Cảnh Báo An Toàn"
+                )
 
             fig_f.update_layout(
                 title=f"Quỹ Đạo Dự Báo {target_param} Trong {horizon} Giờ Tới (Mô Hình: {forecast_res.model_version})",
@@ -402,28 +444,36 @@ with tab_alerts:
         eval_res = detector.evaluate_reading(s)
         if eval_res.is_anomaly:
             rec_action = alert_mgr.determine_recommended_action(eval_res.reasons)
-            incidents.append({
-                "Mã Trạm": eval_res.station_id,
-                "Tên Sông": s["river_name"],
-                "Mức Độ": eval_res.severity,
-                "Lớp Phát Hiện": eval_res.detected_layer,
-                "Điểm Dị Thường": f"{eval_res.anomaly_score:.2f}",
-                "Nguyên Nhân & Vi Phạm": " | ".join(eval_res.reasons),
-                "Hành Động Khuyến Nghị": rec_action,
-                "Thời Gian": eval_res.timestamp,
-            })
+            incidents.append(
+                {
+                    "Mã Trạm": eval_res.station_id,
+                    "Tên Sông": s["river_name"],
+                    "Mức Độ": eval_res.severity,
+                    "Lớp Phát Hiện": eval_res.detected_layer,
+                    "Điểm Dị Thường": f"{eval_res.anomaly_score:.2f}",
+                    "Nguyên Nhân & Vi Phạm": " | ".join(eval_res.reasons),
+                    "Hành Động Khuyến Nghị": rec_action,
+                    "Thời Gian": eval_res.timestamp,
+                }
+            )
 
     if incidents:
         st.error(f"🚨 Phát hiện {len(incidents)} sự cố ô nhiễm đang diễn ra trên lưu vực sông!")
         for idx, inc in enumerate(incidents):
-            with st.expander(f"⚠️ [{inc['Mức Độ']}] {inc['Mã Trạm']} - {inc['Tên Sông']} ({inc['Thời Gian']})", expanded=True):
+            with st.expander(
+                f"⚠️ [{inc['Mức Độ']}] {inc['Mã Trạm']} - {inc['Tên Sông']} ({inc['Thời Gian']})", expanded=True
+            ):
                 col_a, col_b = st.columns([2, 1])
                 with col_a:
                     st.write(f"**Nguyên nhân:** {inc['Nguyên Nhân & Vi Phạm']}")
                     st.write(f"**Khuyến nghị hành động:** {inc['Hành Động Khuyến Nghị']}")
-                    st.write(f"**Cơ chế kích hoạt:** `{inc['Lớp Phát Hiện']}` (Điểm số bất thường: `{inc['Điểm Dị Thường']}`)")
+                    st.write(
+                        f"**Cơ chế kích hoạt:** `{inc['Lớp Phát Hiện']}` (Điểm số bất thường: `{inc['Điểm Dị Thường']}`)"
+                    )
                 with col_b:
                     if st.button("Xác nhận đã tiếp nhận xử lý", key=f"btn_ack_{idx}"):
                         st.success(f"Đã ghi nhận tiếp nhận sự cố {inc['Mã Trạm']} vào nhật ký vận hành.")
     else:
-        st.success("✅ Toàn bộ 10 trạm quan trắc trên các lưu vực sông đang hoạt động trong ngưỡng an toàn sinh thái QCVN 08-MT.")
+        st.success(
+            "✅ Toàn bộ 10 trạm quan trắc trên các lưu vực sông đang hoạt động trong ngưỡng an toàn sinh thái QCVN 08-MT."
+        )

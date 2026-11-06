@@ -6,12 +6,12 @@ Provides RESTful endpoints for:
 3. /health: Service readiness and model status checks.
 """
 
-from datetime import datetime, timezone
 import logging
 import os
 import sys
 import time
-from typing import Any, Dict, List, Optional
+from datetime import UTC, datetime
+from typing import Any
 
 from fastapi import FastAPI
 from pydantic import BaseModel, Field
@@ -51,30 +51,30 @@ REQUEST_COUNTER = {"forecast": 0, "anomaly": 0}
 # ========================================================
 class SensorReadingInput(BaseModel):
     station_id: str = Field(..., json_schema_extra={"example": "ST_HONG_LB_01"})
-    station_name: Optional[str] = Field(None, json_schema_extra={"example": "Trạm Cầu Long Biên"})
-    river_name: Optional[str] = Field(None, json_schema_extra={"example": "Sông Hồng"})
-    timestamp: Optional[str] = Field(None, json_schema_extra={"example": "2026-11-04T12:00:00Z"})
+    station_name: str | None = Field(None, json_schema_extra={"example": "Trạm Cầu Long Biên"})
+    river_name: str | None = Field(None, json_schema_extra={"example": "Sông Hồng"})
+    timestamp: str | None = Field(None, json_schema_extra={"example": "2026-11-04T12:00:00Z"})
     temperature: float = Field(25.0, ge=-5.0, le=55.0, json_schema_extra={"example": 24.5})
     ph: float = Field(7.2, ge=0.0, le=14.0, json_schema_extra={"example": 7.3})
     dissolved_oxygen: float = Field(7.5, ge=0.0, le=30.0, json_schema_extra={"example": 7.8})
-    conductivity: Optional[float] = Field(350.0, ge=0.0, json_schema_extra={"example": 380.0})
-    ammonia: Optional[float] = Field(0.1, ge=0.0, json_schema_extra={"example": 0.12})
-    bod5: Optional[float] = Field(2.0, ge=0.0, json_schema_extra={"example": 2.5})
-    turbidity_ntu: Optional[float] = Field(25.0, ge=0.0, json_schema_extra={"example": 45.0})
-    flow_rate_m3s: Optional[float] = Field(1200.0, ge=0.0, json_schema_extra={"example": 3200.0})
+    conductivity: float | None = Field(350.0, ge=0.0, json_schema_extra={"example": 380.0})
+    ammonia: float | None = Field(0.1, ge=0.0, json_schema_extra={"example": 0.12})
+    bod5: float | None = Field(2.0, ge=0.0, json_schema_extra={"example": 2.5})
+    turbidity_ntu: float | None = Field(25.0, ge=0.0, json_schema_extra={"example": 45.0})
+    flow_rate_m3s: float | None = Field(1200.0, ge=0.0, json_schema_extra={"example": 3200.0})
 
 
 class ForecastRequest(BaseModel):
     station_id: str = Field(..., json_schema_extra={"example": "ST_HONG_LB_01"})
-    river_name: Optional[str] = Field("Sông Hồng", json_schema_extra={"example": "Sông Hồng"})
+    river_name: str | None = Field("Sông Hồng", json_schema_extra={"example": "Sông Hồng"})
     current_reading: SensorReadingInput
-    recent_history: Optional[List[Dict[str, Any]]] = Field(default_factory=list)
+    recent_history: list[dict[str, Any]] | None = Field(default_factory=list)
     horizon_hours: int = Field(24, ge=1, le=72, json_schema_extra={"example": 24})
 
 
 class AnomalyScoreRequest(BaseModel):
     reading: SensorReadingInput
-    recent_history: Optional[List[Dict[str, Any]]] = Field(default_factory=list)
+    recent_history: list[dict[str, Any]] | None = Field(default_factory=list)
     publish_alert_on_critical: bool = Field(True, json_schema_extra={"example": True})
 
 
@@ -82,8 +82,8 @@ class HealthResponse(BaseModel):
     status: str
     version: str
     uptime_seconds: float
-    models_loaded: List[str]
-    total_predictions: Dict[str, int]
+    models_loaded: list[str]
+    total_predictions: dict[str, int]
 
 
 # ========================================================
@@ -101,7 +101,7 @@ def get_health():
     )
 
 
-@app.post("/v1/anomaly/score", response_model=Dict[str, Any])
+@app.post("/v1/anomaly/score", response_model=dict[str, Any])
 def score_anomaly(request: AnomalyScoreRequest):
     """Scores a single sensor reading through the dual-layer anomaly detection engine."""
     REQUEST_COUNTER["anomaly"] += 1
@@ -118,7 +118,7 @@ def score_anomaly(request: AnomalyScoreRequest):
             station_id=result.station_id,
             station_name=request.reading.station_name or result.station_id,
             river_name=request.reading.river_name or "Unknown River",
-            timestamp=result.timestamp or datetime.now(timezone.utc).isoformat(),
+            timestamp=result.timestamp or datetime.now(UTC).isoformat(),
             severity=result.severity,
             reasons=result.reasons,
             metrics=result.metrics_snapshot,
@@ -128,7 +128,7 @@ def score_anomaly(request: AnomalyScoreRequest):
     return result.to_dict()
 
 
-@app.post("/v1/predict/forecast", response_model=Dict[str, Any])
+@app.post("/v1/predict/forecast", response_model=dict[str, Any])
 def predict_forecast(request: ForecastRequest):
     """Generates multi-step ahead forward forecasts (24h-72h) with 95% confidence intervals."""
     REQUEST_COUNTER["forecast"] += 1
@@ -147,6 +147,7 @@ def predict_forecast(request: ForecastRequest):
 
 if __name__ == "__main__":
     import uvicorn
+
     port = int(os.getenv("PORT", "8000"))
     logger.info("Starting FastAPI serving engine on port %d...", port)
     uvicorn.run("src.serving.api:app", host="0.0.0.0", port=port, reload=False)

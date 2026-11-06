@@ -5,9 +5,9 @@ Transforms raw and Gold time-series records into feature matrices ready for:
 2. Unsupervised multi-variate anomaly detection (Isolation Forest / Z-Score).
 """
 
-from datetime import datetime, timezone
 import math
-from typing import Any, Dict, List, Optional
+from datetime import UTC, datetime
+from typing import Any
 
 FEATURE_COLUMNS = [
     # Instantaneous Sensors
@@ -44,7 +44,7 @@ class RiverFeatureExtractor:
     """Transforms hydrological time-series into feature vectors with temporal context."""
 
     @staticmethod
-    def extract_cyclical_time_features(dt: datetime) -> Dict[str, float]:
+    def extract_cyclical_time_features(dt: datetime) -> dict[str, float]:
         """Calculates sine and cosine cyclical encodings for hour-of-day and month-of-year."""
         hour = dt.hour + (dt.minute / 60.0)
         month = dt.month
@@ -60,9 +60,9 @@ class RiverFeatureExtractor:
     @classmethod
     def transform_single_with_history(
         cls,
-        current_reading: Dict[str, Any],
-        recent_history: Optional[List[Dict[str, Any]]] = None,
-    ) -> Dict[str, float]:
+        current_reading: dict[str, Any],
+        recent_history: list[dict[str, Any]] | None = None,
+    ) -> dict[str, float]:
         """Extracts the full feature dictionary for a single reading given recent historical readings."""
         history = recent_history or []
 
@@ -71,8 +71,8 @@ class RiverFeatureExtractor:
         try:
             ts_clean = ts_str.replace("Z", "+00:00") if ts_str.endswith("Z") else ts_str
             dt = datetime.fromisoformat(ts_clean)
-        except Exception:
-            dt = datetime.now(timezone.utc)
+        except (ValueError, TypeError):
+            dt = datetime.now(UTC)
 
         # 1. Base Sensor Values
         cur_do = float(current_reading.get("dissolved_oxygen", 7.5))
@@ -142,16 +142,16 @@ class RiverFeatureExtractor:
     @classmethod
     def transform_series(
         cls,
-        series: List[Dict[str, Any]],
-    ) -> List[Dict[str, float]]:
+        series: list[dict[str, Any]],
+    ) -> list[dict[str, float]]:
         """Transforms a full chronological series into an aligned list of feature dictionaries."""
         features_list = []
         for i, reading in enumerate(series):
-            history = series[max(0, i - 5):i]
+            history = series[max(0, i - 5) : i]
             features_list.append(cls.transform_single_with_history(reading, history))
         return features_list
 
     @classmethod
-    def to_feature_vector(cls, feature_dict: Dict[str, float]) -> List[float]:
+    def to_feature_vector(cls, feature_dict: dict[str, float]) -> list[float]:
         """Extracts ordered list of floats conforming strictly to FEATURE_COLUMNS."""
         return [float(feature_dict.get(col, 0.0)) for col in FEATURE_COLUMNS]

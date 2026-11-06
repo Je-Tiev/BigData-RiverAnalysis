@@ -7,11 +7,11 @@ Implements declarative Data Quality Gates (Great Expectations / PyDeequ equivale
 4. Structured JSON audit report output for Airflow DAGs and monitoring dashboards.
 """
 
-from dataclasses import asdict, dataclass, field
-from datetime import datetime, timezone
 import json
 import logging
-from typing import Any, Dict, List
+from dataclasses import asdict, dataclass, field
+from datetime import UTC, datetime
+from typing import Any
 
 logger = logging.getLogger("DataQualityAuditor")
 
@@ -39,9 +39,9 @@ class QualityAuditReport:
     total_records: int
     passed_checks: int
     failed_checks: int
-    results: List[CheckResult] = field(default_factory=list)
+    results: list[CheckResult] = field(default_factory=list)
 
-    def to_dict(self) -> Dict[str, Any]:
+    def to_dict(self) -> dict[str, Any]:
         return asdict(self)
 
     def to_json(self, indent: int = 2) -> str:
@@ -61,9 +61,9 @@ class RiverDataQualityAuditor:
         self.max_violation_tol = max_physical_violation_rate
         self.suite_name = suite_name
 
-    def audit_records(self, records: List[Dict[str, Any]]) -> QualityAuditReport:
+    def audit_records(self, records: list[dict[str, Any]]) -> QualityAuditReport:
         """Audits an in-memory list of records (e.g. from Pandas or Spark collect)."""
-        now_iso = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+        now_iso = datetime.now(UTC).strftime("%Y-%m-%dT%H:%M:%SZ")
         total = len(records)
 
         if total == 0:
@@ -87,7 +87,7 @@ class RiverDataQualityAuditor:
                 ],
             )
 
-        results: List[CheckResult] = []
+        results: list[CheckResult] = []
 
         # 1. Null Checks on Primary Identifiers
         null_stations = sum(1 for r in records if not r.get("station_id"))

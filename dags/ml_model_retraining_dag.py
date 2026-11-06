@@ -8,10 +8,10 @@ Orchestrates the continuous machine learning lifecycle:
 5. Automated Model Registry promotion gate: Promotes model to 'Production' if RMSE meets threshold.
 """
 
-from datetime import datetime, timedelta
 import logging
 import os
 import sys
+from datetime import UTC, datetime, timedelta
 
 from airflow import DAG
 from airflow.operators.python import PythonOperator
@@ -84,11 +84,10 @@ with DAG(
     default_args=default_args,
     description="Automated ML Model Retraining Pipeline with MLflow & Quality Gate",
     schedule_interval="0 1 * * 0",  # Weekly on Sunday at 01:00 AM UTC
-    start_date=datetime(2026, 1, 1),
+    start_date=datetime(2026, 1, 1, tzinfo=UTC),
     catchup=False,
     tags=["mlops", "retraining", "forecasting", "mlflow"],
 ) as dag:
-
     retrain_task = PythonOperator(
         task_id="retrain_forecaster_and_evaluate",
         python_callable=run_model_retraining,

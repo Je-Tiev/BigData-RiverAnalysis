@@ -22,8 +22,8 @@ class StreamingTransformSimulator:
             return True, "EMPTY_PAYLOAD"
         try:
             parsed = json.loads(raw_string)
-        except Exception as e:
-            return True, f"JSON_DECODE_ERROR: {str(e)}"
+        except (json.JSONDecodeError, TypeError) as e:
+            return True, f"JSON_DECODE_ERROR: {e!s}"
 
         if not isinstance(parsed, dict):
             return True, "PAYLOAD_NOT_OBJECT"

@@ -4,10 +4,10 @@ Tests Feature Extractor, Dual-layer Anomaly Detector, Forecaster with Confidence
 Intervals, MLflow Tracking, Alert Manager, and FastAPI Endpoints.
 """
 
-from datetime import datetime, timezone
 import os
 import sys
 import unittest
+from datetime import UTC, datetime
 
 from fastapi.testclient import TestClient
 
@@ -37,7 +37,7 @@ class TestRiverFeatureExtractor(unittest.TestCase):
         }
 
     def test_cyclical_encodings_within_bounds(self):
-        dt = datetime(2026, 6, 15, 12, 0, 0, tzinfo=timezone.utc)
+        dt = datetime(2026, 6, 15, 12, 0, 0, tzinfo=UTC)
         cyclical = self.extractor.extract_cyclical_time_features(dt)
         for key in ["hour_sin", "hour_cos", "month_sin", "month_cos"]:
             self.assertGreaterEqual(cyclical[key], -1.0)

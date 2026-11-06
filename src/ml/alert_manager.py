@@ -4,13 +4,21 @@ Handles packaging, enrichment, deduplication, and publishing of critical water
 pollution alerts to Kafka topic river.alerts.critical and operational channels.
 """
 
-from dataclasses import asdict, dataclass, field
-from datetime import datetime, timezone
 import json
 import logging
 import os
-from typing import Any, Dict, List, Optional
 import uuid
+from dataclasses import asdict, dataclass, field
+from datetime import UTC, datetime
+from typing import Any, ClassVar
+
+try:
+    from kafka.errors import KafkaError
+
+    from kafka import KafkaProducer
+except ImportError:
+    KafkaProducer = None  # type: ignore[assignment,misc]
+    KafkaError = Exception  # type: ignore[assignment,misc]
 
 logger = logging.getLogger("AlertManager")
 
@@ -26,14 +34,12 @@ class CriticalAlertMessage:
     timestamp: str
     severity: str  # CRITICAL | WARNING
     alert_type: str  # ANOMALY_SURGE | TOXIC_DISCHARGE | ANOXIA_RISK
-    reasons: List[str]
-    metrics: Dict[str, float]
+    reasons: list[str]
+    metrics: dict[str, float]
     recommended_action: str
-    created_at: str = field(
-        default_factory=lambda: datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
-    )
+    created_at: str = field(default_factory=lambda: datetime.now(UTC).strftime("%Y-%m-%dT%H:%M:%SZ"))
 
-    def to_dict(self) -> Dict[str, Any]:
+    def to_dict(self) -> dict[str, Any]:
         return asdict(self)
 
     def to_json(self) -> str:
@@ -43,7 +49,7 @@ class CriticalAlertMessage:
 class RiverAlertManager:
     """Manages the creation and dispatching of real-time river pollution alarms."""
 
-    RECOMMENDED_ACTIONS = {
+    RECOMMENDED_ACTIONS: ClassVar[dict[str, str]] = {
         "DISSOLVED_OXYGEN": "Khẩn cấp: Tăng cường sục khí cục bộ; cảnh báo ngư dân khu vực lân cận ngừng cấp nước vào ao nuôi.",
         "ACID_SPILL": "Báo động đỏ: Khẩn cấp điều tra cống xả thải công nghiệp thượng nguồn; lấy mẫu nước niêm phong hiện trường.",
         "AMMONIA_SEWAGE": "Cảnh báo ô nhiễm hữu cơ: Kiểm tra hệ thống xử lý nước thải đô thị; hạn chế sử dụng nước mặt cho sinh hoạt.",
@@ -53,7 +59,7 @@ class RiverAlertManager:
 
     def __init__(
         self,
-        kafka_bootstrap: Optional[str] = None,
+        kafka_bootstrap: str | None = None,
         alerts_topic: str = "river.alerts.critical",
     ):
         self.kafka_bootstrap = kafka_bootstrap or os.getenv("KAFKA_BOOTSTRAP_SERVERS", "localhost:29092")
@@ -62,20 +68,19 @@ class RiverAlertManager:
 
     def _get_producer(self):
         """Lazy initializer for Kafka Producer."""
-        if self._producer is None:
+        if self._producer is None and KafkaProducer is not None:
             try:
-                from kafka import KafkaProducer
                 self._producer = KafkaProducer(
                     bootstrap_servers=self.kafka_bootstrap,
                     value_serializer=lambda v: json.dumps(v, ensure_ascii=False).encode("utf-8"),
                     acks=1,
                     retries=3,
                 )
-            except Exception as e:
+            except (KafkaError, OSError, ConnectionError) as e:
                 logger.warning("Could not connect to Kafka broker (%s) for alerting: %s", self.kafka_bootstrap, e)
         return self._producer
 
-    def determine_recommended_action(self, reasons: List[str]) -> str:
+    def determine_recommended_action(self, reasons: list[str]) -> str:
         """Selects actionable operational advice based on the detected incident."""
         text = " ".join(reasons).upper()
         if "OXY" in text or "DO" in text:
@@ -95,12 +100,14 @@ class RiverAlertManager:
         river_name: str,
         timestamp: str,
         severity: str,
-        reasons: List[str],
-        metrics: Dict[str, float],
+        reasons: list[str],
+        metrics: dict[str, float],
     ) -> CriticalAlertMessage:
         """Constructs an enriched, structured alert object."""
         action = self.determine_recommended_action(reasons)
-        alert_type = "TOXIC_DISCHARGE" if any("AMMONIA" in r.upper() or "PH" in r.upper() for r in reasons) else "ANOMALY_SURGE"
+        alert_type = (
+            "TOXIC_DISCHARGE" if any("AMMONIA" in r.upper() or "PH" in r.upper() for r in reasons) else "ANOMALY_SURGE"
+        )
 
         return CriticalAlertMessage(
             alert_id=str(uuid.uuid4()),
@@ -136,6 +143,6 @@ class RiverAlertManager:
                 producer.flush()
                 logger.info("Dispatched alert %s to Kafka topic %s.", alert.alert_id, self.alerts_topic)
                 return True
-            except Exception as e:
+            except (KafkaError, OSError, ConnectionError) as e:
                 logger.error("Failed to publish alert to Kafka: %s", e)
         return False

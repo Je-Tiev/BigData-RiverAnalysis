@@ -44,11 +44,11 @@ if /I "%CMD%"=="test" (
     goto :eof
 )
 if /I "%CMD%"=="lint" (
-    "%PYTHON%" -m ruff check src/ tests/ dags/ streaming/ --select=E,F,W --ignore=E501
+    "%PYTHON%" -m ruff check .
     goto :eof
 )
 if /I "%CMD%"=="format" (
-    "%PYTHON%" -m ruff check src/ tests/ dags/ streaming/ --select=E,F,W --ignore=E501 --fix
+    "%PYTHON%" -m ruff check . --fix
     goto :eof
 )
 if /I "%CMD%"=="simulator" (

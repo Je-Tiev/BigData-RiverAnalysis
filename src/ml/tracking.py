@@ -6,13 +6,13 @@ Manages MLOps lifecycle:
 3. Manages Model Registry version transitions (Staging -> Production).
 """
 
-from dataclasses import asdict, dataclass, field
-from datetime import datetime, timezone
 import json
 import logging
 import os
 import shutil
-from typing import Any, Dict, Optional
+from dataclasses import asdict, dataclass, field
+from datetime import UTC, datetime
+from typing import Any
 
 logger = logging.getLogger("MLflowTracker")
 
@@ -25,16 +25,14 @@ class ExperimentRunMetadata:
     experiment_name: str
     model_type: str
     status: str  # COMPLETED | FAILED
-    parameters: Dict[str, Any]
-    metrics: Dict[str, float]
+    parameters: dict[str, Any]
+    metrics: dict[str, float]
     artifact_path: str
-    registered_model_version: Optional[str] = None
+    registered_model_version: str | None = None
     stage: str = "None"  # None | Staging | Production | Archived
-    created_at: str = field(
-        default_factory=lambda: datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
-    )
+    created_at: str = field(default_factory=lambda: datetime.now(UTC).strftime("%Y-%m-%dT%H:%M:%SZ"))
 
-    def to_dict(self) -> Dict[str, Any]:
+    def to_dict(self) -> dict[str, Any]:
         return asdict(self)
 
 
@@ -44,14 +42,12 @@ class RiverMLflowTracker:
     def __init__(
         self,
         experiment_name: str = "River_WaterQuality_ML",
-        tracking_uri: Optional[str] = None,
-        local_store_dir: Optional[str] = None,
+        tracking_uri: str | None = None,
+        local_store_dir: str | None = None,
     ):
         self.experiment_name = experiment_name
         self.tracking_uri = tracking_uri or os.getenv("MLFLOW_TRACKING_URI", "http://localhost:5000")
-        self.local_store_dir = local_store_dir or os.path.join(
-            os.path.dirname(__file__), ".mlflow_local"
-        )
+        self.local_store_dir = local_store_dir or os.path.join(os.path.dirname(__file__), ".mlflow_local")
         os.makedirs(self.local_store_dir, exist_ok=True)
         self._mlflow = None
         self._init_mlflow()
@@ -60,22 +56,24 @@ class RiverMLflowTracker:
         """Attempts to connect to MLflow client."""
         try:
             import mlflow
+
             self._mlflow = mlflow
             self._mlflow.set_tracking_uri(self.tracking_uri)
             self._mlflow.set_experiment(self.experiment_name)
             logger.info("Connected to MLflow Tracking Server at %s", self.tracking_uri)
-        except Exception as e:
+        except Exception as e:  # noqa: BLE001 - Resilient fallback when remote MLflow server is offline
             logger.info("MLflow remote server deferred, using local metadata store: %s", e)
 
     def log_training_run(
         self,
         model_name: str,
-        parameters: Dict[str, Any],
-        metrics: Dict[str, float],
-        model_artifact_path: Optional[str] = None,
+        parameters: dict[str, Any],
+        metrics: dict[str, float],
+        model_artifact_path: str | None = None,
     ) -> ExperimentRunMetadata:
         """Logs a model training run with parameters, metrics, and saves metadata."""
         import uuid
+
         run_id = f"run_{uuid.uuid4().hex[:12]}"
         run_dir = os.path.join(self.local_store_dir, run_id)
         os.makedirs(run_dir, exist_ok=True)
@@ -111,7 +109,7 @@ class RiverMLflowTracker:
                     if model_artifact_path and os.path.exists(model_artifact_path):
                         self._mlflow.log_artifact(model_artifact_path)
                     logger.info("Logged run %s to remote MLflow.", active_run.info.run_id)
-            except Exception as e:
+            except Exception as e:  # noqa: BLE001 - Resilient fallback when remote MLflow server is offline
                 logger.warning("Could not log to remote MLflow: %s", e)
 
         logger.info("Run %s recorded successfully (Model: %s, Metrics: %s)", run_id, model_name, metrics)
@@ -124,7 +122,7 @@ class RiverMLflowTracker:
             logger.error("Run ID %s not found in local store.", run_id)
             return False
 
-        with open(meta_file, "r", encoding="utf-8") as f:
+        with open(meta_file, encoding="utf-8") as f:
             data = json.load(f)
 
         data["stage"] = "Production"

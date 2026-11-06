@@ -171,10 +171,7 @@ class TestRiverTelemetryGenerator(unittest.TestCase):
 
     def test_anomaly_injection_acid_discharge(self):
         station = REFERENCE_STATIONS[0]
-        reading = self.generator.generate_single_reading(
-            station=station,
-            force_anomaly="INDUSTRIAL_ACID_DISCHARGE"
-        )
+        reading = self.generator.generate_single_reading(station=station, force_anomaly="INDUSTRIAL_ACID_DISCHARGE")
         self.assertTrue(reading.is_anomaly)
         self.assertIsNotNone(reading.anomaly_reason)
         self.assertLess(reading.ph, 6.0)
@@ -182,10 +179,7 @@ class TestRiverTelemetryGenerator(unittest.TestCase):
 
     def test_anomaly_injection_sewage_dump(self):
         station = REFERENCE_STATIONS[1]
-        reading = self.generator.generate_single_reading(
-            station=station,
-            force_anomaly="UNTREATED_SEWAGE_DUMP"
-        )
+        reading = self.generator.generate_single_reading(station=station, force_anomaly="UNTREATED_SEWAGE_DUMP")
         self.assertTrue(reading.is_anomaly)
         self.assertGreater(reading.ammonia, 2.0)
         self.assertGreater(reading.bod5, 20.0)

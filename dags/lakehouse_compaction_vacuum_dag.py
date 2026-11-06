@@ -6,9 +6,9 @@ Solves the Small Files Problem in streaming Lakehouse architectures:
 3. Periodic OPTIMIZE on Gold aggregate and Feature Store tables.
 """
 
-from datetime import datetime, timedelta
 import logging
 import os
+from datetime import UTC, datetime, timedelta
 
 from airflow import DAG
 from airflow.operators.python import PythonOperator
@@ -54,11 +54,10 @@ with DAG(
     default_args=default_args,
     description="Automated Delta Lake Compaction & VACUUM Maintenance",
     schedule_interval="0 2 * * *",  # Daily at 02:00 AM UTC
-    start_date=datetime(2026, 1, 1),
+    start_date=datetime(2026, 1, 1, tzinfo=UTC),
     catchup=False,
     tags=["lakehouse", "delta_lake", "maintenance", "optimization"],
 ) as dag:
-
     compact_silver_task = PythonOperator(
         task_id="optimize_silver_table",
         python_callable=run_delta_compaction,

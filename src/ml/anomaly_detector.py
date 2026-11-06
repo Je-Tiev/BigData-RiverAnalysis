@@ -6,10 +6,10 @@ Layer 2 (Statistical & ML): Multivariate Z-Score & Isolation Forest
   (detects subtle multi-parameter correlation shifts, gradual degradation, or sensor drift).
 """
 
-from dataclasses import asdict, dataclass, field
 import logging
 import math
-from typing import Any, Dict, List, Optional
+from dataclasses import asdict, dataclass, field
+from typing import Any, ClassVar
 
 logger = logging.getLogger("AnomalyDetector")
 
@@ -24,10 +24,10 @@ class AnomalyDetectionResult:
     severity: str  # NORMAL | WARNING | CRITICAL
     anomaly_score: float  # 0.0 (pristine) to 1.0 (severe anomaly)
     detected_layer: str  # DETERMINISTIC_RULE | MULTIVARIATE_ZSCORE | ISOLATION_FOREST | NONE
-    reasons: List[str] = field(default_factory=list)
-    metrics_snapshot: Dict[str, float] = field(default_factory=dict)
+    reasons: list[str] = field(default_factory=list)
+    metrics_snapshot: dict[str, float] = field(default_factory=dict)
 
-    def to_dict(self) -> Dict[str, Any]:
+    def to_dict(self) -> dict[str, Any]:
         return asdict(self)
 
 
@@ -35,7 +35,7 @@ class RiverAnomalyDetector:
     """Production-grade dual-layer anomaly detection system."""
 
     # QCVN 08-MT:2015/BTNMT Ecological Safety Thresholds
-    RULE_THRESHOLDS = {
+    RULE_THRESHOLDS: ClassVar[dict[str, dict[str, Any]]] = {
         "dissolved_oxygen": {
             "critical_min": 4.0,  # mg/L: aquatic life asphyxiation
             "warning_min": 5.0,
@@ -84,15 +84,16 @@ class RiverAnomalyDetector:
         """Attempts to initialize scikit-learn Isolation Forest model."""
         try:
             from sklearn.ensemble import IsolationForest
+
             self._ml_model = IsolationForest(
                 n_estimators=100,
                 contamination=self.contamination,
                 random_state=42,
             )
-        except Exception as e:
+        except (ImportError, ValueError, TypeError) as e:
             logger.info("Scikit-learn IsolationForest deferred: %s", e)
 
-    def fit_ml_model(self, feature_matrix: List[List[float]]) -> bool:
+    def fit_ml_model(self, feature_matrix: list[list[float]]) -> bool:
         """Trains the Isolation Forest model on historical clean baseline feature vectors."""
         if self._ml_model is None:
             self._init_isolation_forest()
@@ -102,20 +103,20 @@ class RiverAnomalyDetector:
                 self._ml_model.fit(feature_matrix)
                 logger.info("Isolation Forest fitted successfully on %d vectors.", len(feature_matrix))
                 return True
-            except Exception as e:
+            except (ValueError, RuntimeError, TypeError) as e:
                 logger.error("Failed to fit Isolation Forest: %s", e)
         return False
 
     def evaluate_reading(
         self,
-        reading: Dict[str, Any],
-        recent_history: Optional[List[Dict[str, Any]]] = None,
+        reading: dict[str, Any],
+        recent_history: list[dict[str, Any]] | None = None,
     ) -> AnomalyDetectionResult:
         """Evaluates a single reading through Layer 1 (Rules) and Layer 2 (Statistical/ML)."""
         station_id = str(reading.get("station_id") or "UNKNOWN")
         timestamp = str(reading.get("timestamp") or reading.get("event_time") or "")
 
-        reasons: List[str] = []
+        reasons: list[str] = []
         is_critical = False
         is_warning = False
 
@@ -148,7 +149,9 @@ class RiverAnomalyDetector:
         ph_rules = self.RULE_THRESHOLDS["ph"]
         if ph < ph_rules["critical_min"] or ph > ph_rules["critical_max"]:
             is_critical = True
-            reasons.append(f"CỰC KỲ NGUY HIỂM: pH bất thường nghiêm trọng ({ph}) ngoài dải [{ph_rules['critical_min']}, {ph_rules['critical_max']}]")
+            reasons.append(
+                f"CỰC KỲ NGUY HIỂM: pH bất thường nghiêm trọng ({ph}) ngoài dải [{ph_rules['critical_min']}, {ph_rules['critical_max']}]"
+            )
         elif ph < ph_rules["warning_min"] or ph > ph_rules["warning_max"]:
             is_warning = True
             reasons.append(f"CẢNH BÁO: pH dao động ngoài dải chuẩn ({ph})")
@@ -187,7 +190,7 @@ class RiverAnomalyDetector:
         # Layer 2: Statistical & Unsupervised ML Anomaly Detection
         # ========================================================
         history = recent_history or []
-        stat_reasons: List[str] = []
+        stat_reasons: list[str] = []
         max_z = 0.0
 
         if len(history) >= 5:
@@ -202,8 +205,7 @@ class RiverAnomalyDetector:
                 effective_std = max(raw_std, std_floor)
 
                 z = abs(metrics[key] - mean_val) / effective_std
-                if z > max_z:
-                    max_z = z
+                max_z = max(max_z, z)
                 if z >= self.z_threshold:
                     stat_reasons.append(
                         f"Đột biến thống kê ({key}): Z-Score = {z:.2f} (giá trị {metrics[key]} lệch khỏi trung bình {mean_val:.2f})"

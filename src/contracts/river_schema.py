@@ -6,8 +6,8 @@ Standardizes column names (snake_case) and eliminates character encoding bugs.
 """
 
 from dataclasses import dataclass
-from datetime import datetime
-from typing import Any, Dict, List, Optional, Tuple
+from datetime import UTC, datetime
+from typing import Any
 
 # Schema Version
 SCHEMA_VERSION: str = "1.2.0"
@@ -19,29 +19,29 @@ DEFAULT_TOPIC_ALERTS: str = "river.alerts.critical"
 
 # Physical and Environmental Plausibility Limits
 # Values outside these ranges represent physical sensor faults or transmission corruption
-PHYSICAL_LIMITS: Dict[str, Tuple[float, float]] = {
-    "temperature": (-5.0, 55.0),          # °C: typical fresh water range
-    "ph": (0.0, 14.0),                    # pH scale standard
-    "dissolved_oxygen": (0.0, 25.0),       # mg/L: saturation limits
-    "conductivity": (0.0, 10000.0),       # µS/cm: freshwater conductivity
-    "ammonia": (0.0, 50.0),               # mg/L as N
-    "bod5": (0.0, 150.0),                 # mg/L: Biochemical Oxygen Demand 5-day
-    "chloride": (0.0, 5000.0),            # mg/L
-    "total_hardness": (0.0, 2000.0),      # mg/L as CaCO3
-    "turbidity_ntu": (0.0, 2000.0),       # NTU (Nephelometric Turbidity Units)
-    "flow_rate_m3s": (0.0, 50000.0),      # m³/s: river discharge
+PHYSICAL_LIMITS: dict[str, tuple[float, float]] = {
+    "temperature": (-5.0, 55.0),  # °C: typical fresh water range
+    "ph": (0.0, 14.0),  # pH scale standard
+    "dissolved_oxygen": (0.0, 25.0),  # mg/L: saturation limits
+    "conductivity": (0.0, 10000.0),  # µS/cm: freshwater conductivity
+    "ammonia": (0.0, 50.0),  # mg/L as N
+    "bod5": (0.0, 150.0),  # mg/L: Biochemical Oxygen Demand 5-day
+    "chloride": (0.0, 5000.0),  # mg/L
+    "total_hardness": (0.0, 2000.0),  # mg/L as CaCO3
+    "turbidity_ntu": (0.0, 2000.0),  # NTU (Nephelometric Turbidity Units)
+    "flow_rate_m3s": (0.0, 50000.0),  # m³/s: river discharge
 }
 
 # Critical Safety Thresholds (QCVN 08-MT:2015/BTNMT - National Technical Regulation on Surface Water Quality)
-CRITICAL_THRESHOLDS: Dict[str, Dict[str, float]] = {
-    "dissolved_oxygen": {"min": 4.0, "severity": "HIGH"},     # DO < 4.0 mg/L threatens aquatic life
-    "ph": {"min": 5.5, "max": 9.0, "severity": "HIGH"},       # pH outside 5.5-9.0 is hazardous
-    "ammonia": {"max": 1.0, "severity": "HIGH"},             # Ammonia > 1.0 mg/L indicates organic waste
-    "bod5": {"max": 15.0, "severity": "MEDIUM"},             # BOD > 15 mg/L indicates organic pollution
+CRITICAL_THRESHOLDS: dict[str, dict[str, float]] = {
+    "dissolved_oxygen": {"min": 4.0, "severity": "HIGH"},  # DO < 4.0 mg/L threatens aquatic life
+    "ph": {"min": 5.5, "max": 9.0, "severity": "HIGH"},  # pH outside 5.5-9.0 is hazardous
+    "ammonia": {"max": 1.0, "severity": "HIGH"},  # Ammonia > 1.0 mg/L indicates organic waste
+    "bod5": {"max": 15.0, "severity": "MEDIUM"},  # BOD > 15 mg/L indicates organic pollution
 }
 
 # Reference Stations across Major River Basins (Vietnam)
-REFERENCE_STATIONS: List[Dict[str, Any]] = [
+REFERENCE_STATIONS: list[dict[str, Any]] = [
     {
         "station_id": "ST_HONG_LB_01",
         "station_name": "Trạm Cầu Long Biên",
@@ -156,13 +156,13 @@ class RiverSensorReading:
     total_hardness: float
     turbidity_ntu: float
     flow_rate_m3s: float
-    ccme_score: Optional[float] = None
-    quality_label: Optional[str] = None
+    ccme_score: float | None = None
+    quality_label: str | None = None
     is_anomaly: bool = False
-    anomaly_reason: Optional[str] = None
+    anomaly_reason: str | None = None
     schema_version: str = SCHEMA_VERSION
 
-    def to_dict(self) -> Dict[str, Any]:
+    def to_dict(self) -> dict[str, Any]:
         """Convert reading instance to serialized dictionary."""
         return {
             "schema_version": self.schema_version,
@@ -190,7 +190,7 @@ class RiverSensorReading:
         }
 
 
-def validate_sensor_payload(payload: Dict[str, Any]) -> Tuple[bool, Optional[str]]:
+def validate_sensor_payload(payload: dict[str, Any]) -> tuple[bool, str | None]:
     """Validate a raw payload against contract constraints and physical plausibility.
 
     Returns:
@@ -208,11 +208,11 @@ def validate_sensor_payload(payload: Dict[str, Any]) -> Tuple[bool, Optional[str
         # Support ISO 8601 variations (with or without Z)
         ts_clean = ts_str.replace("Z", "+00:00") if ts_str.endswith("Z") else ts_str
         datetime.fromisoformat(ts_clean)
-    except Exception:
+    except (ValueError, TypeError):
         # Fallback check for YYYY-MM-DD HH:MM:SS
         try:
-            datetime.strptime(ts_str, "%Y-%m-%d %H:%M:%S")
-        except Exception:
+            datetime.strptime(ts_str, "%Y-%m-%d %H:%M:%S").replace(tzinfo=UTC)
+        except (ValueError, TypeError):
             return False, f"Invalid timestamp format: '{ts_str}'. Expected ISO-8601 or 'YYYY-MM-DD HH:MM:SS'"
 
     # 3. Numeric Plausibility Range Checks
@@ -243,29 +243,31 @@ def get_spark_schema():
             StructType,
         )
 
-        return StructType([
-            StructField("schema_version", StringType(), True),
-            StructField("station_id", StringType(), False),
-            StructField("station_name", StringType(), True),
-            StructField("river_name", StringType(), True),
-            StructField("basin_name", StringType(), True),
-            StructField("latitude", DoubleType(), True),
-            StructField("longitude", DoubleType(), True),
-            StructField("timestamp", StringType(), False),
-            StructField("temperature", DoubleType(), True),
-            StructField("ph", DoubleType(), True),
-            StructField("dissolved_oxygen", DoubleType(), True),
-            StructField("conductivity", DoubleType(), True),
-            StructField("ammonia", DoubleType(), True),
-            StructField("bod5", DoubleType(), True),
-            StructField("chloride", DoubleType(), True),
-            StructField("total_hardness", DoubleType(), True),
-            StructField("turbidity_ntu", DoubleType(), True),
-            StructField("flow_rate_m3s", DoubleType(), True),
-            StructField("ccme_score", DoubleType(), True),
-            StructField("quality_label", StringType(), True),
-            StructField("is_anomaly", BooleanType(), True),
-            StructField("anomaly_reason", StringType(), True),
-        ])
+        return StructType(
+            [
+                StructField("schema_version", StringType(), True),
+                StructField("station_id", StringType(), False),
+                StructField("station_name", StringType(), True),
+                StructField("river_name", StringType(), True),
+                StructField("basin_name", StringType(), True),
+                StructField("latitude", DoubleType(), True),
+                StructField("longitude", DoubleType(), True),
+                StructField("timestamp", StringType(), False),
+                StructField("temperature", DoubleType(), True),
+                StructField("ph", DoubleType(), True),
+                StructField("dissolved_oxygen", DoubleType(), True),
+                StructField("conductivity", DoubleType(), True),
+                StructField("ammonia", DoubleType(), True),
+                StructField("bod5", DoubleType(), True),
+                StructField("chloride", DoubleType(), True),
+                StructField("total_hardness", DoubleType(), True),
+                StructField("turbidity_ntu", DoubleType(), True),
+                StructField("flow_rate_m3s", DoubleType(), True),
+                StructField("ccme_score", DoubleType(), True),
+                StructField("quality_label", StringType(), True),
+                StructField("is_anomaly", BooleanType(), True),
+                StructField("anomaly_reason", StringType(), True),
+            ]
+        )
     except ImportError as e:
         raise ImportError("pyspark is required to construct get_spark_schema()") from e

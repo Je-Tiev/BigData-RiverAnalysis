@@ -5,12 +5,12 @@ across monitoring stations using Gradient Boosted Decision Trees with recursive 
 simulation and uncertainty confidence bounds (95% CI).
 """
 
-from dataclasses import asdict, dataclass, field
-from datetime import datetime, timedelta, timezone
 import logging
 import math
 import os
-from typing import Any, Dict, List, Optional
+from dataclasses import asdict, dataclass, field
+from datetime import UTC, datetime, timedelta
+from typing import Any
 
 logger = logging.getLogger("RiverForecaster")
 
@@ -30,7 +30,7 @@ class ForecastPoint:
     predicted_wqi: float
     predicted_label: str
 
-    def to_dict(self) -> Dict[str, Any]:
+    def to_dict(self) -> dict[str, Any]:
         return asdict(self)
 
 
@@ -42,20 +42,20 @@ class StationForecastResult:
     river_name: str
     generated_at: str
     horizon_hours: int
-    forecast_points: List[ForecastPoint] = field(default_factory=list)
+    forecast_points: list[ForecastPoint] = field(default_factory=list)
     model_version: str = "v1.2.0-gbm"
 
-    def to_dict(self) -> Dict[str, Any]:
+    def to_dict(self) -> dict[str, Any]:
         return asdict(self)
 
 
 class RiverWaterQualityForecaster:
     """Production time-series forecaster with uncertainty estimation."""
 
-    def __init__(self, model_dir: Optional[str] = None):
+    def __init__(self, model_dir: str | None = None):
         self.model_dir = model_dir or os.path.join(os.path.dirname(__file__), "models")
-        self._models: Dict[str, Any] = {}
-        self._residual_stds: Dict[str, float] = {
+        self._models: dict[str, Any] = {}
+        self._residual_stds: dict[str, float] = {
             "dissolved_oxygen": 0.35,  # Empirical residual standard error in mg/L
             "ph": 0.12,
         }
@@ -65,6 +65,7 @@ class RiverWaterQualityForecaster:
         """Initializes Gradient Boosting models for DO and pH prediction."""
         try:
             from sklearn.ensemble import HistGradientBoostingRegressor
+
             self._models["dissolved_oxygen"] = HistGradientBoostingRegressor(
                 max_iter=100,
                 max_depth=6,
@@ -77,15 +78,15 @@ class RiverWaterQualityForecaster:
                 learning_rate=0.08,
                 random_state=42,
             )
-        except Exception as e:
+        except (ImportError, ValueError, TypeError) as e:
             logger.info("Scikit-learn HistGradientBoostingRegressor deferred: %s", e)
 
     def train(
         self,
-        X_train: List[List[float]],
-        y_train_do: List[float],
-        y_train_ph: List[float],
-    ) -> Dict[str, float]:
+        X_train: list[list[float]],
+        y_train_do: list[float],
+        y_train_ph: list[float],
+    ) -> dict[str, float]:
         """Trains models on Gold Feature Store vectors and computes residual errors."""
         if not self._models:
             self._init_models()
@@ -111,7 +112,7 @@ class RiverWaterQualityForecaster:
             metrics["ph_residual_std"] = res_ph
 
             logger.info("Trained forecaster successfully: DO ResStd=%.3f, pH ResStd=%.3f", res_do, res_ph)
-        except Exception as e:
+        except (ValueError, RuntimeError, TypeError, KeyError) as e:
             logger.error("Error during forecaster training: %s", e)
 
         return metrics
@@ -120,20 +121,20 @@ class RiverWaterQualityForecaster:
         self,
         station_id: str,
         river_name: str,
-        current_reading: Dict[str, Any],
-        recent_history: Optional[List[Dict[str, Any]]] = None,
+        current_reading: dict[str, Any],
+        recent_history: list[dict[str, Any]] | None = None,
         horizon_hours: int = 24,
     ) -> StationForecastResult:
         """Generates multi-step ahead forecasts with 95% confidence intervals."""
         from src.producers.river_simulator import HydrologicalPhysicsEngine
 
-        now_iso = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+        now_iso = datetime.now(UTC).strftime("%Y-%m-%dT%H:%M:%SZ")
         ts_str = str(current_reading.get("timestamp") or current_reading.get("event_time") or "")
         try:
             ts_clean = ts_str.replace("Z", "+00:00") if ts_str.endswith("Z") else ts_str
             start_dt = datetime.fromisoformat(ts_clean)
-        except Exception:
-            start_dt = datetime.now(timezone.utc)
+        except (ValueError, TypeError):
+            start_dt = datetime.now(UTC)
 
         # Baseline parameters
         cur_do = float(current_reading.get("dissolved_oxygen", 7.5))
@@ -142,7 +143,7 @@ class RiverWaterQualityForecaster:
         cur_amm = float(current_reading.get("ammonia", 0.1))
         cur_turb = float(current_reading.get("turbidity_ntu", 25.0))
 
-        points: List[ForecastPoint] = []
+        points: list[ForecastPoint] = []
 
         do_std = self._residual_stds.get("dissolved_oxygen", 0.35)
         ph_std = self._residual_stds.get("ph", 0.12)
@@ -176,14 +177,16 @@ class RiverWaterQualityForecaster:
             ph_high = round(min(10.0, pred_ph + ph_margin), 2)
 
             # Calculate forecast WQI
-            wqi_score, label = HydrologicalPhysicsEngine.compute_ccme_wqi({
-                "ph": pred_ph,
-                "dissolved_oxygen": pred_do,
-                "ammonia": cur_amm,
-                "bod5": float(current_reading.get("bod5", 2.0)),
-                "conductivity": float(current_reading.get("conductivity", 350.0)),
-                "turbidity_ntu": cur_turb,
-            })
+            wqi_score, label = HydrologicalPhysicsEngine.compute_ccme_wqi(
+                {
+                    "ph": pred_ph,
+                    "dissolved_oxygen": pred_do,
+                    "ammonia": cur_amm,
+                    "bod5": float(current_reading.get("bod5", 2.0)),
+                    "conductivity": float(current_reading.get("conductivity", 350.0)),
+                    "turbidity_ntu": cur_turb,
+                }
+            )
 
             points.append(
                 ForecastPoint(

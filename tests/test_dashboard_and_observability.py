@@ -28,9 +28,18 @@ class TestDashboardComponents(unittest.TestCase):
         state = get_current_network_state()
         first = state[0]
         required_keys = [
-            "station_id", "station_name", "river_name", "basin_name",
-            "latitude", "longitude", "temperature", "ph", "dissolved_oxygen",
-            "ccme_score", "quality_label", "is_anomaly",
+            "station_id",
+            "station_name",
+            "river_name",
+            "basin_name",
+            "latitude",
+            "longitude",
+            "temperature",
+            "ph",
+            "dissolved_oxygen",
+            "ccme_score",
+            "quality_label",
+            "is_anomaly",
         ]
         for key in required_keys:
             self.assertIn(key, first, f"Missing required key in network state: {key}")
@@ -55,19 +64,19 @@ class TestObservabilityConfigs(unittest.TestCase):
         prom_path = os.path.join(self.repo_root, "monitoring", "prometheus", "prometheus.yml")
         self.assertTrue(os.path.exists(prom_path), f"Prometheus config missing: {prom_path}")
 
-        with open(prom_path, "r", encoding="utf-8") as f:
+        with open(prom_path, encoding="utf-8") as f:
             content = f.read()
 
         # Check for core scrape targets
-        self.assertIn("job_name: \"spark_cluster\"", content)
-        self.assertIn("job_name: \"model_serving_api\"", content)
-        self.assertIn("job_name: \"influxdb\"", content)
+        self.assertIn('job_name: "spark_cluster"', content)
+        self.assertIn('job_name: "model_serving_api"', content)
+        self.assertIn('job_name: "influxdb"', content)
 
     def test_grafana_datasource_prometheus_exists(self):
         ds_path = os.path.join(self.repo_root, "grafana", "provisioning", "datasources", "prometheus.yml")
         self.assertTrue(os.path.exists(ds_path), f"Grafana prometheus datasource missing: {ds_path}")
 
-        with open(ds_path, "r", encoding="utf-8") as f:
+        with open(ds_path, encoding="utf-8") as f:
             content = f.read()
 
         self.assertIn("type: prometheus", content)
@@ -77,7 +86,7 @@ class TestObservabilityConfigs(unittest.TestCase):
         dash_path = os.path.join(self.repo_root, "grafana", "dashboards", "bigdata_infrastructure_dashboard.json")
         self.assertTrue(os.path.exists(dash_path), f"Dashboard JSON missing: {dash_path}")
 
-        with open(dash_path, "r", encoding="utf-8") as f:
+        with open(dash_path, encoding="utf-8") as f:
             dash = json.load(f)
 
         self.assertEqual(dash["title"], "Big Data Platform & Pipeline Health")
@@ -89,7 +98,7 @@ class TestObservabilityConfigs(unittest.TestCase):
 
     def test_docker_compose_contains_prometheus_and_airflow(self):
         compose_path = os.path.join(self.repo_root, "docker-compose.yml")
-        with open(compose_path, "r", encoding="utf-8") as f:
+        with open(compose_path, encoding="utf-8") as f:
             content = f.read()
 
         self.assertIn("prometheus:", content)
