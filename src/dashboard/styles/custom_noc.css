@@ -1,0 +1,214 @@
+/* ==============================================================================
+   BIGDATA-RIVERANALYSIS: INDUSTRIAL NOC/SCADA DESIGN SYSTEM v2.0
+   ============================================================================== */
+
+/* Base Reset & Background */
+.stApp {
+    background-color: #0F172A !important;
+    color: #F8FAFC !important;
+}
+
+/* Sidebar Customization */
+[data-testid="stSidebar"] {
+    background-color: #0B1120 !important;
+    border-right: 1px solid #334155 !important;
+    padding-top: 1rem !important;
+}
+
+/* --------------------------------------------------------------------------
+   MANDATORY TABULAR NUMERALS (STRICT SCADA ANTI-JITTER RULE)
+   -------------------------------------------------------------------------- */
+.scada-number, .metric-value, .stMetric [data-testid="stMetricValue"], 
+td.tabular-data, .telemetry-val, .coordinate-text, .timestamp-badge, .scada-metric-val {
+    font-family: 'JetBrains Mono', 'Roboto Mono', 'SF Mono', Consolas, monospace !important;
+    font-variant-numeric: tabular-nums lining-nums !important;
+    -moz-font-feature-settings: "tnum" 1, "lnum" 1;
+    -webkit-font-feature-settings: "tnum" 1, "lnum" 1;
+    font-feature-settings: "tnum" 1, "lnum" 1;
+    letter-spacing: -0.02em;
+}
+
+/* --------------------------------------------------------------------------
+   SCADA METRIC TILES & CONTAINERS
+   -------------------------------------------------------------------------- */
+.scada-metric-tile {
+    background-color: #1E293B;
+    border: 1px solid #334155;
+    border-radius: 2px;
+    padding: 10px 14px;
+    margin-bottom: 8px;
+    box-shadow: 0 1px 3px rgba(0, 0, 0, 0.4);
+    transition: border-color 0.15s ease-in-out;
+}
+.scada-metric-tile:hover {
+    border-color: #06B6D4;
+}
+
+.scada-metric-label {
+    font-size: 11px;
+    text-transform: uppercase;
+    font-weight: 600;
+    color: #94A3B8;
+    letter-spacing: 0.05em;
+    margin-bottom: 4px;
+}
+
+.scada-metric-val {
+    font-size: 22px;
+    font-weight: 700;
+    color: #F8FAFC;
+    line-height: 1.2;
+}
+
+.scada-metric-sub {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 11px;
+    color: #64748B;
+    margin-top: 4px;
+}
+
+/* --------------------------------------------------------------------------
+   TECHNICAL BADGES (ELIMINATING ALL EMOJIS)
+   -------------------------------------------------------------------------- */
+.badge-critical {
+    background-color: #450A0A;
+    border: 1px solid #DC2626;
+    color: #FCA5A5;
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 11px;
+    font-weight: 700;
+    padding: 2px 6px;
+    border-radius: 2px;
+    text-transform: uppercase;
+}
+
+.badge-high {
+    background-color: #431407;
+    border: 1px solid #EA580C;
+    color: #FDBA74;
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 11px;
+    font-weight: 700;
+    padding: 2px 6px;
+    border-radius: 2px;
+    text-transform: uppercase;
+}
+
+.badge-medium {
+    background-color: #451A03;
+    border: 1px solid #D97706;
+    color: #FDE68A;
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 11px;
+    font-weight: 700;
+    padding: 2px 6px;
+    border-radius: 2px;
+    text-transform: uppercase;
+}
+
+.badge-nominal {
+    background-color: #052E16;
+    border: 1px solid #16A34A;
+    color: #86EFAC;
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 11px;
+    font-weight: 700;
+    padding: 2px 6px;
+    border-radius: 2px;
+    text-transform: uppercase;
+}
+
+.badge-info {
+    background-color: #083344;
+    border: 1px solid #0891B2;
+    color: #67E8F9;
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 11px;
+    font-weight: 700;
+    padding: 2px 6px;
+    border-radius: 2px;
+    text-transform: uppercase;
+}
+
+/* --------------------------------------------------------------------------
+   PULSE ANIMATION FOR ANOMALY MAP PINS
+   -------------------------------------------------------------------------- */
+@keyframes pulse-ring {
+    0% {
+        transform: scale(0.95);
+        box-shadow: 0 0 0 0 rgba(239, 68, 68, 0.7);
+    }
+    70% {
+        transform: scale(1);
+        box-shadow: 0 0 0 10px rgba(239, 68, 68, 0);
+    }
+    100% {
+        transform: scale(0.95);
+        box-shadow: 0 0 0 0 rgba(239, 68, 68, 0);
+    }
+}
+
+.pulse-marker {
+    border-radius: 50%;
+    animation: pulse-ring 1.8s infinite;
+}
+
+/* --------------------------------------------------------------------------
+   STREAMLIT TABS & BUTTONS RE-STYLING
+   -------------------------------------------------------------------------- */
+.stTabs [data-baseweb="tab-list"] {
+    background-color: #0F172A;
+    border-bottom: 1px solid #334155;
+    gap: 2px;
+}
+
+.stTabs [data-baseweb="tab"] {
+    background-color: #1E293B;
+    border: 1px solid #334155;
+    border-bottom: none;
+    border-radius: 2px 2px 0 0;
+    color: #94A3B8;
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 12px;
+    font-weight: 600;
+    padding: 8px 16px;
+}
+
+.stTabs [aria-selected="true"] {
+    background-color: #0F172A !important;
+    border-top: 2px solid #06B6D4 !important;
+    color: #F8FAFC !important;
+}
+
+.stButton > button {
+    background-color: #1E293B;
+    border: 1px solid #334155;
+    border-radius: 2px;
+    color: #F8FAFC;
+    font-family: 'Inter', -apple-system, sans-serif;
+    font-size: 12px;
+    font-weight: 600;
+    padding: 6px 12px;
+    transition: all 0.15s ease-in-out;
+}
+.stButton > button:hover {
+    border-color: #06B6D4;
+    color: #06B6D4;
+    background-color: #0F172A;
+}
+
+/* Custom WebKit Scrollbars */
+::-webkit-scrollbar {
+    width: 6px;
+    height: 6px;
+}
+::-webkit-scrollbar-track {
+    background: #0F172A;
+}
+::-webkit-scrollbar-thumb {
+    background: #334155;
+    border-radius: 2px;
+}
+::-webkit-scrollbar-thumb:hover {
+    background: #06B6D4;
+}

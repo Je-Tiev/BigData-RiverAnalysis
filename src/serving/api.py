@@ -100,6 +100,16 @@ class SensorReadingInput(BaseModel):
     turbidity_ntu: float | None = Field(25.0, ge=0.0, json_schema_extra={"example": 45.0})
     flow_rate_m3s: float | None = Field(1200.0, ge=0.0, json_schema_extra={"example": 3200.0})
 
+    # 8 Extended QCVN 08:2023 Parameters (Strictly Default None)
+    cod: float | None = Field(None, ge=0.0, json_schema_extra={"example": 7.5})
+    tss: float | None = Field(None, ge=0.0, json_schema_extra={"example": 68.0})
+    nitrate_no3: float | None = Field(None, ge=0.0, json_schema_extra={"example": 1.2})
+    phosphate_po4: float | None = Field(None, ge=0.0, json_schema_extra={"example": 0.05})
+    coliform: float | None = Field(None, ge=0.0, json_schema_extra={"example": 1500.0})
+    salinity: float | None = Field(None, ge=0.0, json_schema_extra={"example": 0.05})
+    alkalinity: float | None = Field(None, ge=0.0, json_schema_extra={"example": 140.0})
+    true_colour: float | None = Field(None, ge=0.0, json_schema_extra={"example": 20.0})
+
 
 class ForecastRequest(BaseModel):
     station_id: str = Field(..., json_schema_extra={"example": "ST_HONG_LB_01"})

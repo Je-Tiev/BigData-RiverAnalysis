@@ -7,7 +7,8 @@
 [![Delta Lake](https://img.shields.io/badge/Delta%20Lake-3.2.0-00ADD8.svg)](https://delta.io/)
 [![Apache Airflow](https://img.shields.io/badge/Apache%20Airflow-2.8.3-017CEE.svg)](https://airflow.apache.org/)
 [![FastAPI](https://img.shields.io/badge/FastAPI-0.110.0-009688.svg)](https://fastapi.tiangolo.com/)
-[![Streamlit](https://img.shields.io/badge/Streamlit-1.32.0-FF4B4B.svg)](https://streamlit.io/)
+[![Streamlit](https://img.shields.io/badge/Streamlit-1.40.0+-FF4B4B.svg)](https://streamlit.io/)
+[![Schema Version](https://img.shields.io/badge/Schema-v1.3.0-00C49F.svg)](src/contracts/river_schema.py)
 [![Prometheus](https://img.shields.io/badge/Prometheus-v2.50.0-E6522C.svg)](https://prometheus.io/)
 [![Grafana](https://img.shields.io/badge/Grafana-10.x-F46800.svg)](https://grafana.com/)
 [![Code Style](https://img.shields.io/badge/code%20style-ruff-000000.svg)](https://github.com/astral-sh/ruff)
@@ -54,8 +55,8 @@ Hệ thống được thiết kế theo mô hình **Decoupled Medallion & Stream
 ```mermaid
 flowchart TD
     subgraph SENSORS ["1. Data Ingestion & Physics Engine"]
-        A1["IoT Stations (10 Lưu vực Sông VN)"] -->|Canonical JSON v1.2.0| K1["Kafka: river.sensors.raw"]
-        A2["Hydrological Physics Engine<br/>(Benson-Krause DO / Diurnal Cycle)"] -.-> A1
+        A1["IoT Stations (10 Lưu vực Sông VN)"] -->|Canonical JSON v1.3.0 (18 Tham số)| K1["Kafka: river.sensors.raw"]
+        A2["Hydrological Physics Engine<br/>(Dual WQI: CCME + VN_WQI QĐ 1460)"] -.-> A1
     end
 
     subgraph STREAMING ["2. Distributed Stream Processing (Spark 3.5)"]
@@ -98,15 +99,16 @@ Hệ thống đã trải qua 5 giai đoạn tái cấu trúc toàn diện so v�
 | Thành phần | Phiên bản Ban đầu (Technical Debt) | Phiên bản Hiện tại (Production-Ready) |
 |---|---|---|
 | **Driver Memory** | Dùng `batch_df.collect()` gây tràn RAM Driver (OOM) | Phân tán hoàn toàn bằng `foreachPartition` batching tại worker level |
-| **Xử lý Dữ liệu Lỗi** | `failOnDataLoss=false`, bỏ qua lỗi âm thầm | **Dead Letter Queue (DLQ)** đẩy dữ liệu rác sang `river.sensors.dlq` |
-| **Sinh dữ liệu IoT** | Dùng `random.uniform()` phẳng, phi thực tế | **Hydrological Physics Engine**: mô phỏng nhiệt độ ngày/đêm, hòa tan DO Benson-Krause, 4 kịch bản tiêm dị thường |
+| **Xử lý Dữ liệu Lỗi** | `failOnDataLoss=false`, bỏ qua lỗi âm thầm | **Dead Letter Queue (DLQ)** & **DLQ Self-Healing Engine**: tự động phân loại, sửa lỗi và phục hồi dữ liệu rác |
+| **Hợp đồng Dữ liệu** | 10 tham số cơ bản, dễ lỗi xung đột schema | **Data Contract v1.3.0**: 18 tham số hóa lý đầy đủ theo QCVN 08:2023/BTNMT, bảo toàn tương thích ngược 100% |
+| **Sinh dữ liệu IoT** | Dùng `random.uniform()` phẳng, phi thực tế | **Hydrological Physics Engine & Dual-Engine WQI**: mô phỏng Benson-Krause DO, chu kỳ ngày/đêm, 6 kịch bản dị thường, tính đồng thời CCME và VN_WQI QĐ 1460 |
 | **Lưu trữ Hồ chứa** | Parquet thuần không transaction, bị Small Files Problem | **Delta Lake 3.2.0**: ACID transactions, deduplicate bằng `MERGE INTO`, Airflow `OPTIMIZE ... ZORDER BY` gom file và `VACUUM` |
-| **Data Quality Gate** | Không kiểm tra chất lượng dữ liệu | **Declarative Data Quality Auditor**: kiểm toán tỷ lệ null, vi phạm vật lý QCVN 08-MT |
-| **Machine Learning** | Không có mô hình AI/ML | **Phát hiện dị thường 2 lớp** (Deterministic QCVN + Multivariate Isolation Forest & Z-Score) & **Dự báo 24h-72h** (95% Confidence Interval) |
-| **Phục vụ Mô hình** | Không có REST API | **FastAPI Microservice** chuẩn REST, schema Pydantic, độ trễ < 50ms |
-| **Giao diện Giám sát** | Thiếu bản đồ, giao diện thô | **Streamlit Operations Command Center**: Bản đồ GIS 10 trạm sông, realtime Plotly telemetry, AI explorer, Incident triage console |
+| **Data Quality Gate** | Không kiểm tra chất lượng dữ liệu | **Declarative Data Quality Auditor**: kiểm toán tỷ lệ null, vi phạm giới hạn vật lý 18 thông số |
+| **Machine Learning** | Không có mô hình AI/ML | **Phát hiện dị thường 2 lớp** (QCVN 08 + Isolation Forest/Z-Score) & **Dự báo 24h-72h** kèm dải tin cậy Conformal Prediction 95% |
+| **Phục vụ Mô hình** | Không có REST API | **FastAPI Microservice** chuẩn REST, schema Pydantic v1.3, Circuit Breaker bảo vệ độ trễ < 50ms |
+| **Giao diện Giám sát** | Thiếu bản đồ, dashboard 733 dòng đơn khối, chớp giật | **SCADA Operations Center Modular Architecture**: Dark Slate NOC UI, Tabular Numerals `JetBrains Mono`, 4 Persona Views, `@st.fragment` triệt tiêu chớp giật, Lean Router < 100 dòng |
 | **Giám sát Hạ tầng** | Không có monitoring hệ thống | **Prometheus + Grafana Provisioning**: giám sát Kafka lag, Spark executor heap, throughput |
-| **CI/CD & DevOps** | Không có CI, không có Makefile | **GitHub Actions CI** tự động lint (Ruff) và chạy 51 unit/integration tests; `Makefile` & `manage.ps1` |
+| **CI/CD & DevOps** | Không có CI, không có Makefile | **GitHub Actions CI** tự động lint (Ruff) và chạy 114 unit/integration tests (100% Pass); `manage.bat` & `manage.ps1` |
 
 ---
 
@@ -201,9 +203,14 @@ BigData-RiverAnalysis/
 │   ├── config/
 │   │   └── settings.py                 # Centralized Configuration (Pydantic / Dataclasses)
 │   ├── contracts/
-│   │   └── river_schema.py             # Data Contract Canonical Schema v1.2.0 & 10 GPS Stations
-│   ├── dashboard/
-│   │   └── app.py                      # Streamlit Command Center (GIS, Telemetry, ML, Alert)
+│   │   └── river_schema.py             # Data Contract Schema v1.3.0 (18 tham số hóa lý) & 10 trạm GPS
+│   ├── dashboard/                      # Phân hệ SCADA NOC Operations Modular UI
+│   │   ├── components/                 # Atomic widgets (GIS Map, Multi-trace Charts, Ribbon, Badges)
+│   │   ├── services/                   # TelemetryService, FastAPIClient (Circuit Breaker), Exporter
+│   │   ├── state/                      # Centralized SessionStateManager, 4-tier RBAC & SHA-256 Audit
+│   │   ├── styles/                     # Custom Dark Slate NOC CSS, WQI 5-tier colors, theme
+│   │   ├── views/                      # 4 Persona views (Executive, Telemetry, Incidents, Hydrology Ops)
+│   │   └── app.py                      # Lean Router Entrypoint (< 100 dòng mã)
 │   ├── lakehouse/                      # Kiến trúc Medallion Lakehouse (Delta Lake)
 │   │   ├── bronze.py                   # Ingest nguyên trạng Kafka JSON append-only
 │   │   ├── silver.py                   # Clean, validate, enrich, MERGE INTO deduplication
@@ -215,22 +222,28 @@ BigData-RiverAnalysis/
 │   │   ├── alert_manager.py            # Packaging & Kafka river.alerts.critical publisher
 │   │   └── tracking.py                 # MLflow tracking wrapper with local fallback
 │   ├── producers/
-│   │   └── river_simulator.py          # Hydrological Physics Engine & Anomaly Injector
+│   │   └── river_simulator.py          # Hydrological Physics Engine, Dual-Engine WQI & Anomaly Injector
 │   ├── quality/
-│   │   └── data_auditor.py             # Declarative Data Quality Auditor
+│   │   ├── data_auditor.py             # Declarative Data Quality Auditor
+│   │   ├── dlq_recovery.py             # Dead-Letter Queue Self-Healing Engine
+│   │   └── ecological_risk.py          # Động học Emerson NH3 & Phân hạng QCVN 08:2023
 │   └── serving/
 │       └── api.py                      # Production FastAPI REST Microservice
 ├── streaming/                          # Luồng Xử lý Phân tán Spark Structured Streaming
 │   ├── spark_to_delta.py               # Streaming ingestion vào Delta Lake Bronze & Silver
 │   ├── spark_to_influxdb.py            # Streaming vào InfluxDB (foreachPartition + DLQ)
 │   └── spark_to_minio.py               # Streaming lưu trữ thô MinIO
-├── tests/                              # Bộ Kiểm thử Tự động Toàn diện (51 Tests)
-│   ├── test_contracts_and_simulator.py # Tests Data contracts & Hydrological physics
-│   ├── test_streaming_pipeline.py      # Tests DLQ, schema normalization, watermark
-│   ├── test_lakehouse_and_wqi.py       # Tests Medallion Bronze, Silver, Gold, WQI
-│   ├── test_data_quality.py            # Tests Data quality auditing & physical boundaries
-│   ├── test_ml_and_serving.py          # Tests ML models, forecaster, MLflow & FastAPI
-│   └── test_dashboard_and_observability.py # Tests Streamlit helpers & Prometheus configs
+├── tests/                              # Bộ Kiểm thử Tự động Toàn diện (114 Tests Passed 100%)
+│   ├── test_contracts_and_simulator.py # Tests Data contracts & Hydrological physics (19 tests)
+│   ├── test_streaming_pipeline.py      # Tests DLQ, schema normalization, watermark (8 tests)
+│   ├── test_lakehouse_and_wqi.py       # Tests Medallion Bronze, Silver, Gold, WQI (6 tests)
+│   ├── test_data_quality.py            # Tests Data quality auditing & physical boundaries (5 tests)
+│   ├── test_ml_and_serving.py          # Tests ML models, forecaster, MLflow & FastAPI (12 tests)
+│   ├── test_phase7_advanced_intelligence.py # Tests Advanced Hydrology, Diagnostics & Drift (21 tests)
+│   ├── test_stage2_styles_services_components.py # Tests Tokens, Circuit Breaker & Widgets (11 tests)
+│   ├── test_stage3_views_router_state.py # Tests Views, RBAC Session & Lean Router (9 tests)
+│   ├── test_phase8_e2e_integration.py  # Tests E2E Integration Regression Phase 8 (15 tests)
+│   └── test_dashboard_and_observability.py # Tests Streamlit helpers & Prometheus configs (8 tests)
 ├── docker-compose.yml                  # Hạ tầng 15 Docker Services hoàn chỉnh
 ├── Dockerfile                          # Dockerfile cho Python Microservices (API & Dashboard)
 ├── Dockerfile.spark                    # Dockerfile cho Spark Cluster tích hợp Delta Lake 3.2.0
@@ -288,13 +301,16 @@ BigData-RiverAnalysis/
   - `GET /health`: Kiểm tra sức khỏe microservice và mô hình đã load trong bộ nhớ.
   - Swagger Documentation tự động tại `/docs` và ReDoc tại `/redoc`.
 
-### 6. Streamlit River Operations Command Center
-- **Vị trí:** `src/dashboard/app.py`
-- Giao diện tác nghiệp tập trung cho kỹ sư và nhà quản lý môi trường:
-  - **Bản đồ Không gian GIS (Folium/Leaflet):** Hiển thị 10 trạm sông trên toàn quốc. Marker tự động đổi màu theo phân hạng WQI (Xanh: Tốt, Vàng: Trung bình, Đỏ: Nguy hại / Dị thường). Click vào trạm để mở popup thông số tức thời.
-  - **Real-time Telemetry Analytics:** Biểu đồ Plotly tương tác cho chuỗi DO, pH, Nhiệt độ, Ammonia, Độ đục kèm dải ngưỡng an toàn QCVN.
-  - **AI/ML 24h-72h Forecast Explorer:** Khảo sát dự báo tương lai kèm dải bóng tin cậy 95% Confidence Interval.
-  - **Incident Operations Console:** Trung tâm tiếp nhận sự cố xả thải khẩn cấp, hiển thị chỉ dẫn hành động cứu hộ và nút "Tiếp nhận & Xử lý sự cố" có lưu vết kiểm toán (Audit Trail).
+### 6. Streamlit SCADA NOC River Operations Command Center
+- **Vị trí:** `src/dashboard/app.py` & phân hệ `src/dashboard/`
+- Giao diện tác nghiệp tập trung đạt chuẩn Trung tâm Điều hành Thủy văn Quốc gia (NOC):
+  - **Kiến trúc Router Tinh Gọn (< 100 dòng):** `src/dashboard/app.py` đóng vai trò Lean Router & Facade Re-export, tối ưu hóa phân quyền RBAC và duy trì tương thích 100% với các kiểm thử cũ.
+  - **4 Màn hình Tác nghiệp Phân quyền (Persona Views):**
+    * *Screen 1 (Giám đốc Điều hành):* KPI Ribbon quốc gia, bản đồ GIS CartoDB DarkMatter 10 trạm sông, bảng tin sự cố xả thải.
+    * *Screen 2 (Kỹ sư Môi trường):* Biểu đồ Plotly Multi-trace 18 thông số, quỹ đạo dự báo 72h dải tin cậy 95% Conformal Prediction, trích xuất dữ liệu đa định dạng (CSV UTF-8 BOM, Excel 4 trang tính, HTML in ấn).
+    * *Screen 3 (Cán bộ Hiện trường):* Kanban Board vòng đời sự cố 4 bước (`NEW` -> `ACK` -> `IN_PROGRESS` -> `RESOLVED`), chỉ dẫn hành động SOP, niêm phong mật mã SHA-256 Audit Trail.
+    * *Screen 4 (Kỹ sư MLOps & Thủy văn):* Đồ thị lưu vực sông, đường cong suy giảm oxy Streeter-Phelps, nhiệt động học Emerson độc tính $NH_3$, chẩn đoán suy thoái cảm biến, tự cứu DLQ và kiểm tra sức khỏe hạ tầng 6 cổng.
+  - **Thiết kế Chuyên nghiệp Không Chớp Giật:** Ứng dụng `@st.fragment` (`@safe_fragment`) triệt tiêu hiện tượng reload toàn trang, bắt buộc Tabular Numerals `JetBrains Mono` loại bỏ hoàn toàn rung giật số liệu.
 
 ### 7. Giám sát Hạ tầng với Prometheus & Grafana
 - **Vị trí:** `monitoring/prometheus/` & `grafana/`
@@ -308,28 +324,35 @@ BigData-RiverAnalysis/
 
 ## 🧪 Kiểm thử Tự động & Chất lượng Mã nguồn
 
-Dự án áp dụng quy chuẩn kiểm thử nghiêm ngặt với **51 tests tự động** bao phủ toàn bộ các tầng:
+Dự án áp dụng quy chuẩn kiểm thử nghiêm ngặt với **114 tests tự động** bao phủ toàn bộ các tầng kiến trúc với tỷ lệ vượt qua tuyệt đối (100% PASS):
 
 ```bash
-# Chạy toàn bộ 51 Unit & Integration Tests
+# Chạy toàn bộ 114 Unit, Regression & Integration Tests
 pytest tests/ -v
 
-# Kết quả kiểm thử mẫu:
-# ======================== 51 passed in 4.04s ========================
+# Kết quả kiểm thử chuẩn:
+# ======================== 114 passed in 20.85s ========================
 ```
 
-Bảng phân bổ các bài test:
-- `tests/test_contracts_and_simulator.py` (13 tests): Kiểm tra schema validation, Benson-Krause DO, chu kỳ ngày/đêm, kịch bản tiêm dị thường.
-- `tests/test_streaming_pipeline.py` (8 tests): Kiểm tra lọc Dead Letter Queue, chuẩn hóa schema legacy, trigger ngưỡng nguy hại.
-- `tests/test_lakehouse_and_wqi.py` (6 tests): Kiểm tra chuyển đổi Bronze -> Silver -> Gold, tính toán CCME WQI vector hóa, feature store.
-- `tests/test_data_quality.py` (5 tests): Kiểm tra kiểm toán tỷ lệ null, vi phạm giới hạn vật lý, xuất báo cáo JSON.
-- `tests/test_ml_and_serving.py` (12 tests): Kiểm tra Feature extractor, Anomaly detector, Alert manager, Forecaster, MLflow tracker, FastAPI endpoints.
-- `tests/test_dashboard_and_observability.py` (7 tests): Kiểm tra dashboard state helpers, Prometheus scrape YAML, Grafana provisioning JSON.
+Bảng phân bổ chi tiết 10 bộ kiểm thử:
+- `tests/test_contracts_and_simulator.py` (19 tests): Data contracts Schema v1.3.0, Benson-Krause DO, chu kỳ ngày/đêm, Động cơ kép WQI, 6 kịch bản dị thường.
+- `tests/test_streaming_pipeline.py` (8 tests): Lọc Dead Letter Queue, chuẩn hóa schema legacy, trigger ngưỡng nguy hại.
+- `tests/test_lakehouse_and_wqi.py` (6 tests): Chuyển đổi Bronze -> Silver -> Gold, tính toán CCME WQI vector hóa, feature store.
+- `tests/test_data_quality.py` (5 tests): Kiểm toán tỷ lệ null, vi phạm giới hạn vật lý 18 tham số, xuất báo cáo JSON.
+- `tests/test_ml_and_serving.py` (12 tests): Feature extractor, Anomaly detector, Alert manager, Forecaster, MLflow tracker, FastAPI endpoints.
+- `tests/test_phase7_advanced_intelligence.py` (21 tests): Mô hình lan truyền 1D ADR Streeter-Phelps, quy kết nhân quả không gian, động học Emerson NH3, lọc Kalman chẩn đoán cảm biến, kiểm định trôi dạt dữ liệu PSI/KS-test, và bộ tự cứu DLQ.
+- `tests/test_stage2_styles_services_components.py` (11 tests): SCADA NOC Design Tokens, 5-tier WQI palettes, Plotly dark template, Circuit Breaker 3 trạng thái, Report Export đa định dạng (CSV BOM, Excel openpyxl, HTML).
+- `tests/test_stage3_views_router_state.py` (9 tests): Phân quyền RBAC 4 vai trò, vòng đời Kanban sự cố, niêm phong SHA-256 Audit Trail, 4 Persona views, và ràng buộc Router tinh gọn < 100 dòng.
+- `tests/test_phase8_e2e_integration.py` (15 tests): Kiểm thử tích hợp E2E toàn diện Phase 8 (Schema v1.3 roundtrip, Physical limits, Spark schema, Dual WQI, Exporters, Circuit Breaker cycle, Fallbacks, Session RBAC, Lean Router).
+- `tests/test_dashboard_and_observability.py` (8 tests): Dashboard state helpers, Prometheus scrape YAML, Grafana provisioning JSON.
 
-Kiểm tra định dạng và chất lượng mã nguồn bằng Ruff:
+Kiểm tra cú pháp, định dạng và chất lượng mã nguồn bằng Ruff:
 ```bash
-ruff check src/ tests/ dags/ streaming/ --select=E,F,W --ignore=E501
+python -m ruff check .
 # Kết quả: All checks passed! (0 errors, 0 warnings)
+
+python -m ruff format --check .
+# Kết quả: 65 files already formatted
 ```
 
 ---
@@ -345,9 +368,9 @@ Hệ thống được tối ưu chỉ dùng **2 phương thức duy nhất**:
 | **Dừng Nền tảng** | `.\manage.bat down` | `docker compose down` |
 | **Kiểm tra trạng thái Containers** | `.\manage.bat status` | `docker compose ps` |
 | **Xem Logs theo thời gian thực** | `.\manage.bat logs` | `docker compose logs -f --tail=100` |
-| **Chạy 51 Pytest Tests** | `.\manage.bat test` | `pytest tests/ -v` |
+| **Chạy 114 Pytest Tests** | `.\manage.bat test` | `pytest tests/ -v` |
 | **Kiểm tra cú pháp & Linting** | `.\manage.bat lint` | `ruff check src/ tests/ dags/ streaming/` |
-| **Tự động Format & Sửa Lỗi Code** | `.\manage.bat format` | `ruff check src/ tests/ dags/ streaming/ --fix` |
+| **Tự động Format & Sửa Lỗi Code** | `.\manage.bat format` | `ruff format src/ tests/ dags/ streaming/` |
 | **Chạy IoT Hydrological Simulator** | `.\manage.bat simulator` | `python src/producers/river_simulator.py` |
 | **Chạy FastAPI Serving Microservice** | `.\manage.bat api` | `python -m uvicorn src.serving.api:app --reload --port 8000` |
 | **Chạy Streamlit Dashboard** | `.\manage.bat dashboard` | `streamlit run src/dashboard/app.py` |

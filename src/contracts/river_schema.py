@@ -10,7 +10,7 @@ from datetime import UTC, datetime
 from typing import Any
 
 # Schema Version
-SCHEMA_VERSION: str = "1.2.0"
+SCHEMA_VERSION: str = "1.3.0"
 
 # Default Kafka Topics
 DEFAULT_TOPIC_SENSORS_RAW: str = "river.sensors.raw"
@@ -20,6 +20,7 @@ DEFAULT_TOPIC_ALERTS: str = "river.alerts.critical"
 # Physical and Environmental Plausibility Limits
 # Values outside these ranges represent physical sensor faults or transmission corruption
 PHYSICAL_LIMITS: dict[str, tuple[float, float]] = {
+    # 10 Tham số cốt lõi hiện hữu (Giữ nguyên tuyệt đối)
     "temperature": (-5.0, 55.0),  # °C: typical fresh water range
     "ph": (0.0, 14.0),  # pH scale standard
     "dissolved_oxygen": (0.0, 25.0),  # mg/L: saturation limits
@@ -30,14 +31,26 @@ PHYSICAL_LIMITS: dict[str, tuple[float, float]] = {
     "total_hardness": (0.0, 2000.0),  # mg/L as CaCO3
     "turbidity_ntu": (0.0, 2000.0),  # NTU (Nephelometric Turbidity Units)
     "flow_rate_m3s": (0.0, 50000.0),  # m³/s: river discharge
+    # 8 Tham số mở rộng QCVN 08:2023/BTNMT mới
+    "cod": (0.0, 500.0),  # mg/L: Chemical Oxygen Demand
+    "tss": (0.0, 1000.0),  # mg/L: Total Suspended Solids
+    "nitrate_no3": (0.0, 100.0),  # mg N/L: Nitrate as Nitrogen
+    "phosphate_po4": (0.0, 20.0),  # mg P/L: ortho-Phosphate as Phosphorus
+    "coliform": (0.0, 1000000.0),  # MPN/100mL: Total Coliform
+    "salinity": (0.0, 50.0),  # ppt (‰): Salinity
+    "alkalinity": (0.0, 1000.0),  # mg/L as CaCO3: Total Alkalinity
+    "true_colour": (0.0, 500.0),  # Pt-Co: Platinum-Cobalt color scale
 }
 
 # Critical Safety Thresholds (QCVN 08-MT:2015/BTNMT - National Technical Regulation on Surface Water Quality)
-CRITICAL_THRESHOLDS: dict[str, dict[str, float]] = {
+CRITICAL_THRESHOLDS: dict[str, dict[str, Any]] = {
     "dissolved_oxygen": {"min": 4.0, "severity": "HIGH"},  # DO < 4.0 mg/L threatens aquatic life
     "ph": {"min": 5.5, "max": 9.0, "severity": "HIGH"},  # pH outside 5.5-9.0 is hazardous
     "ammonia": {"max": 1.0, "severity": "HIGH"},  # Ammonia > 1.0 mg/L indicates organic waste
     "bod5": {"max": 15.0, "severity": "MEDIUM"},  # BOD > 15 mg/L indicates organic pollution
+    "cod": {"max": 50.0, "severity": "MEDIUM"},
+    "coliform": {"max": 10000.0, "severity": "HIGH"},
+    "salinity": {"max": 4.0, "severity": "HIGH"},
 }
 
 # Reference Stations across Major River Basins (Vietnam)
@@ -139,6 +152,7 @@ REFERENCE_STATIONS: list[dict[str, Any]] = [
 class RiverSensorReading:
     """Standardized representation of a single telemetry record from a river station."""
 
+    # 1. Core Identifiers & Mandatory Physical Telemetry (NO DEFAULT - 10 fields)
     station_id: str
     station_name: str
     river_name: str
@@ -149,15 +163,32 @@ class RiverSensorReading:
     temperature: float
     ph: float
     dissolved_oxygen: float
-    conductivity: float
-    ammonia: float
-    bod5: float
-    chloride: float
-    total_hardness: float
-    turbidity_ntu: float
-    flow_rate_m3s: float
+
+    # 2. Legacy Optional Sensor Readings (Defaults matching v1.2.0)
+    conductivity: float = 300.0
+    ammonia: float = 0.05
+    bod5: float = 2.0
+    chloride: float = 25.0
+    total_hardness: float = 120.0
+    turbidity_ntu: float = 30.0
+    flow_rate_m3s: float = 1000.0
+
+    # 3. New QCVN 08:2023 Expanded Fields (Strictly Optional[float] = None)
+    cod: float | None = None
+    tss: float | None = None
+    nitrate_no3: float | None = None
+    phosphate_po4: float | None = None
+    coliform: float | None = None
+    salinity: float | None = None
+    alkalinity: float | None = None
+    true_colour: float | None = None
+
+    # 4. Analytical Scores, Indices & Operational Flags
     ccme_score: float | None = None
     quality_label: str | None = None
+    vn_wqi_score: float | None = None
+    vn_wqi_label: str | None = None
+    qcvn_tier: str | None = None
     is_anomaly: bool = False
     anomaly_reason: str | None = None
     schema_version: str = SCHEMA_VERSION
@@ -183,11 +214,61 @@ class RiverSensorReading:
             "total_hardness": self.total_hardness,
             "turbidity_ntu": self.turbidity_ntu,
             "flow_rate_m3s": self.flow_rate_m3s,
+            "cod": self.cod,
+            "tss": self.tss,
+            "nitrate_no3": self.nitrate_no3,
+            "phosphate_po4": self.phosphate_po4,
+            "coliform": self.coliform,
+            "salinity": self.salinity,
+            "alkalinity": self.alkalinity,
+            "true_colour": self.true_colour,
             "ccme_score": self.ccme_score,
             "quality_label": self.quality_label,
+            "vn_wqi_score": self.vn_wqi_score,
+            "vn_wqi_label": self.vn_wqi_label,
+            "qcvn_tier": self.qcvn_tier,
             "is_anomaly": self.is_anomaly,
             "anomaly_reason": self.anomaly_reason,
         }
+
+    @classmethod
+    def from_dict(cls, data: dict[str, Any]) -> "RiverSensorReading":
+        """Instantiate RiverSensorReading from a dictionary payload."""
+        return cls(
+            station_id=data["station_id"],
+            station_name=data.get("station_name", ""),
+            river_name=data.get("river_name", ""),
+            basin_name=data.get("basin_name", ""),
+            latitude=float(data.get("latitude", 0.0)),
+            longitude=float(data.get("longitude", 0.0)),
+            timestamp=data["timestamp"],
+            temperature=float(data["temperature"]),
+            ph=float(data["ph"]),
+            dissolved_oxygen=float(data["dissolved_oxygen"]),
+            conductivity=float(data.get("conductivity", 300.0)),
+            ammonia=float(data.get("ammonia", 0.05)),
+            bod5=float(data.get("bod5", 2.0)),
+            chloride=float(data.get("chloride", 25.0)),
+            total_hardness=float(data.get("total_hardness", 120.0)),
+            turbidity_ntu=float(data.get("turbidity_ntu", 30.0)),
+            flow_rate_m3s=float(data.get("flow_rate_m3s", 1000.0)),
+            cod=float(data["cod"]) if data.get("cod") is not None else None,
+            tss=float(data["tss"]) if data.get("tss") is not None else None,
+            nitrate_no3=float(data["nitrate_no3"]) if data.get("nitrate_no3") is not None else None,
+            phosphate_po4=float(data["phosphate_po4"]) if data.get("phosphate_po4") is not None else None,
+            coliform=float(data["coliform"]) if data.get("coliform") is not None else None,
+            salinity=float(data["salinity"]) if data.get("salinity") is not None else None,
+            alkalinity=float(data["alkalinity"]) if data.get("alkalinity") is not None else None,
+            true_colour=float(data["true_colour"]) if data.get("true_colour") is not None else None,
+            ccme_score=float(data["ccme_score"]) if data.get("ccme_score") is not None else None,
+            quality_label=data.get("quality_label"),
+            vn_wqi_score=float(data["vn_wqi_score"]) if data.get("vn_wqi_score") is not None else None,
+            vn_wqi_label=data.get("vn_wqi_label"),
+            qcvn_tier=data.get("qcvn_tier"),
+            is_anomaly=bool(data.get("is_anomaly", False)),
+            anomaly_reason=data.get("anomaly_reason"),
+            schema_version=data.get("schema_version", SCHEMA_VERSION),
+        )
 
 
 def validate_sensor_payload(payload: dict[str, Any]) -> tuple[bool, str | None]:
@@ -263,8 +344,21 @@ def get_spark_schema():
                 StructField("total_hardness", DoubleType(), True),
                 StructField("turbidity_ntu", DoubleType(), True),
                 StructField("flow_rate_m3s", DoubleType(), True),
+                # 8 Expanded Nullable Fields
+                StructField("cod", DoubleType(), True),
+                StructField("tss", DoubleType(), True),
+                StructField("nitrate_no3", DoubleType(), True),
+                StructField("phosphate_po4", DoubleType(), True),
+                StructField("coliform", DoubleType(), True),
+                StructField("salinity", DoubleType(), True),
+                StructField("alkalinity", DoubleType(), True),
+                StructField("true_colour", DoubleType(), True),
+                # Analytical Fields
                 StructField("ccme_score", DoubleType(), True),
                 StructField("quality_label", StringType(), True),
+                StructField("vn_wqi_score", DoubleType(), True),
+                StructField("vn_wqi_label", StringType(), True),
+                StructField("qcvn_tier", StringType(), True),
                 StructField("is_anomaly", BooleanType(), True),
                 StructField("anomaly_reason", StringType(), True),
             ]

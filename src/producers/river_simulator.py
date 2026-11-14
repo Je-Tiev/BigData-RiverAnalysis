@@ -139,6 +139,160 @@ class HydrologicalPhysicsEngine:
 
         return score, label
 
+    @staticmethod
+    def compute_vn_wqi(readings: dict[str, float]) -> tuple[float, str]:
+        """Compute Vietnam Water Quality Index (VN_WQI) per Decision 1460/QD-TCMT.
+
+        Groups:
+        - Group I: pH (multiplier index)
+        - Group II: Organics (DO, BOD5, COD)
+        - Group III: Nutrients (Ammonia, Nitrate NO3, Phosphate PO4)
+        - Group IV: Microbiological (Coliform)
+
+        Returns:
+            Tuple of (vn_wqi_score: float, vn_wqi_label: str)
+        """
+        # 1. Group I: pH
+        ph_val = readings.get("ph")
+        if ph_val is None:
+            wqi_ph = 100.0
+        elif 6.5 <= ph_val <= 8.5:
+            wqi_ph = 100.0
+        elif 5.5 <= ph_val < 6.5:
+            wqi_ph = 100.0 - ((6.5 - ph_val) / (6.5 - 5.5)) * 50.0
+        elif 8.5 < ph_val <= 9.0:
+            wqi_ph = 100.0 - ((ph_val - 8.5) / (9.0 - 8.5)) * 50.0
+        else:
+            wqi_ph = 10.0
+        wqi_ph = max(10.0, min(wqi_ph, 100.0))
+
+        # 2. Group II: Organics (DO, BOD5, COD)
+        g2_scores: list[float] = []
+        if "dissolved_oxygen" in readings and readings["dissolved_oxygen"] is not None:
+            do_val = readings["dissolved_oxygen"]
+            if do_val >= 6.0:
+                s_do = 100.0
+            elif do_val >= 5.0:
+                s_do = 75.0 + ((do_val - 5.0) / 1.0) * 25.0
+            elif do_val >= 3.0:
+                s_do = 50.0 + ((do_val - 3.0) / 2.0) * 25.0
+            elif do_val >= 2.0:
+                s_do = 25.0 + ((do_val - 2.0) / 1.0) * 25.0
+            else:
+                s_do = 10.0
+            g2_scores.append(s_do)
+
+        if "bod5" in readings and readings["bod5"] is not None:
+            bod = readings["bod5"]
+            if bod <= 4.0:
+                s_bod = 100.0
+            elif bod <= 6.0:
+                s_bod = 100.0 - ((bod - 4.0) / 2.0) * 25.0
+            elif bod <= 15.0:
+                s_bod = 75.0 - ((bod - 6.0) / 9.0) * 25.0
+            elif bod <= 25.0:
+                s_bod = 50.0 - ((bod - 15.0) / 10.0) * 25.0
+            else:
+                s_bod = 10.0
+            g2_scores.append(s_bod)
+
+        if "cod" in readings and readings["cod"] is not None:
+            cod = readings["cod"]
+            if cod <= 15.0:
+                s_cod = 100.0
+            elif cod <= 30.0:
+                s_cod = 100.0 - ((cod - 15.0) / 15.0) * 25.0
+            elif cod <= 50.0:
+                s_cod = 75.0 - ((cod - 30.0) / 20.0) * 25.0
+            elif cod <= 80.0:
+                s_cod = 50.0 - ((cod - 50.0) / 30.0) * 25.0
+            else:
+                s_cod = 10.0
+            g2_scores.append(s_cod)
+
+        wqi_g2 = sum(g2_scores) / len(g2_scores) if g2_scores else 80.0
+
+        # 3. Group III: Nutrients (Ammonia, Nitrate, Phosphate)
+        g3_scores: list[float] = []
+        if "ammonia" in readings and readings["ammonia"] is not None:
+            nh4 = readings["ammonia"]
+            if nh4 <= 0.3:
+                s_nh4 = 100.0
+            elif nh4 <= 0.6:
+                s_nh4 = 100.0 - ((nh4 - 0.3) / 0.3) * 25.0
+            elif nh4 <= 0.9:
+                s_nh4 = 75.0 - ((nh4 - 0.6) / 0.3) * 25.0
+            elif nh4 <= 1.5:
+                s_nh4 = 50.0 - ((nh4 - 0.9) / 0.6) * 25.0
+            else:
+                s_nh4 = 10.0
+            g3_scores.append(s_nh4)
+
+        if "nitrate_no3" in readings and readings["nitrate_no3"] is not None:
+            no3 = readings["nitrate_no3"]
+            if no3 <= 2.0:
+                s_no3 = 100.0
+            elif no3 <= 5.0:
+                s_no3 = 100.0 - ((no3 - 2.0) / 3.0) * 25.0
+            elif no3 <= 10.0:
+                s_no3 = 75.0 - ((no3 - 5.0) / 5.0) * 25.0
+            elif no3 <= 15.0:
+                s_no3 = 50.0 - ((no3 - 10.0) / 5.0) * 25.0
+            else:
+                s_no3 = 10.0
+            g3_scores.append(s_no3)
+
+        if "phosphate_po4" in readings and readings["phosphate_po4"] is not None:
+            po4 = readings["phosphate_po4"]
+            if po4 <= 0.1:
+                s_po4 = 100.0
+            elif po4 <= 0.2:
+                s_po4 = 100.0 - ((po4 - 0.1) / 0.1) * 25.0
+            elif po4 <= 0.3:
+                s_po4 = 75.0 - ((po4 - 0.2) / 0.1) * 25.0
+            elif po4 <= 0.5:
+                s_po4 = 50.0 - ((po4 - 0.3) / 0.2) * 25.0
+            else:
+                s_po4 = 10.0
+            g3_scores.append(s_po4)
+
+        wqi_g3 = sum(g3_scores) / len(g3_scores) if g3_scores else 80.0
+
+        # 4. Group IV: Coliform
+        if "coliform" in readings and readings["coliform"] is not None:
+            coli = readings["coliform"]
+            if coli <= 2500.0:
+                wqi_g4 = 100.0
+            elif coli <= 5000.0:
+                wqi_g4 = 75.0
+            elif coli <= 7500.0:
+                wqi_g4 = 50.0
+            elif coli <= 10000.0:
+                wqi_g4 = 25.0
+            else:
+                wqi_g4 = 10.0
+        else:
+            wqi_g4 = 80.0
+
+        # Composite Index with pH multiplier
+        combined_groups = (wqi_g2 + wqi_g3 + wqi_g4) / 3.0
+        vn_wqi = (wqi_ph / 100.0) * combined_groups
+        score = round(max(0.0, min(vn_wqi, 100.0)), 1)
+
+        # 5 Tiers according to QĐ 1460/QĐ-TCMT
+        if score >= 91.0:
+            label = "Rất tốt"
+        elif score >= 76.0:
+            label = "Tốt"
+        elif score >= 51.0:
+            label = "Trung bình"
+        elif score >= 26.0:
+            label = "Kém"
+        else:
+            label = "Ô nhiễm nặng"
+
+        return score, label
+
 
 class RiverTelemetryGenerator:
     """Generates continuous realistic telemetry streams with anomaly injection."""
@@ -153,6 +307,14 @@ class RiverTelemetryGenerator:
             "bod5": 1.2,
             "turbidity": 15.0,
             "flow_rate": 2200.0,
+            "cod": 3.8,
+            "tss": 18.0,
+            "nitrate_no3": 0.65,
+            "phosphate_po4": 0.02,
+            "coliform": 350.0,
+            "salinity": 0.03,
+            "alkalinity": 145.0,
+            "true_colour": 8.0,
         },
         "Sông Lô": {
             "base_temp": 23.0,
@@ -162,6 +324,14 @@ class RiverTelemetryGenerator:
             "bod5": 1.8,
             "turbidity": 35.0,
             "flow_rate": 1100.0,
+            "cod": 5.5,
+            "tss": 45.0,
+            "nitrate_no3": 0.95,
+            "phosphate_po4": 0.04,
+            "coliform": 850.0,
+            "salinity": 0.04,
+            "alkalinity": 130.0,
+            "true_colour": 12.0,
         },
         "Sông Hồng": {
             "base_temp": 24.5,
@@ -171,6 +341,14 @@ class RiverTelemetryGenerator:
             "bod5": 2.5,
             "turbidity": 80.0,
             "flow_rate": 3500.0,
+            "cod": 7.5,
+            "tss": 145.0,
+            "nitrate_no3": 1.45,
+            "phosphate_po4": 0.07,
+            "coliform": 2200.0,
+            "salinity": 0.05,
+            "alkalinity": 160.0,
+            "true_colour": 25.0,
         },
         "Sông Hương": {
             "base_temp": 25.0,
@@ -180,6 +358,14 @@ class RiverTelemetryGenerator:
             "bod5": 1.5,
             "turbidity": 20.0,
             "flow_rate": 450.0,
+            "cod": 4.6,
+            "tss": 24.0,
+            "nitrate_no3": 0.55,
+            "phosphate_po4": 0.02,
+            "coliform": 620.0,
+            "salinity": 0.08,
+            "alkalinity": 48.0,
+            "true_colour": 10.0,
         },
         "Sông Hàn": {
             "base_temp": 26.0,
@@ -189,6 +375,14 @@ class RiverTelemetryGenerator:
             "bod5": 2.2,
             "turbidity": 25.0,
             "flow_rate": 380.0,
+            "cod": 6.8,
+            "tss": 32.0,
+            "nitrate_no3": 0.78,
+            "phosphate_po4": 0.05,
+            "coliform": 1400.0,
+            "salinity": 0.85,
+            "alkalinity": 95.0,
+            "true_colour": 12.0,
         },
         "Sông Sài Gòn": {
             "base_temp": 28.0,
@@ -198,6 +392,14 @@ class RiverTelemetryGenerator:
             "bod5": 4.5,
             "turbidity": 65.0,
             "flow_rate": 750.0,
+            "cod": 14.2,
+            "tss": 88.0,
+            "nitrate_no3": 2.60,
+            "phosphate_po4": 0.18,
+            "coliform": 6800.0,
+            "salinity": 2.40,
+            "alkalinity": 85.0,
+            "true_colour": 35.0,
         },
         "Sông Đồng Nai": {
             "base_temp": 27.5,
@@ -207,6 +409,14 @@ class RiverTelemetryGenerator:
             "bod5": 3.2,
             "turbidity": 45.0,
             "flow_rate": 1800.0,
+            "cod": 10.5,
+            "tss": 62.0,
+            "nitrate_no3": 1.85,
+            "phosphate_po4": 0.12,
+            "coliform": 4500.0,
+            "salinity": 3.10,
+            "alkalinity": 90.0,
+            "true_colour": 28.0,
         },
         "Sông Tiền": {
             "base_temp": 28.5,
@@ -216,6 +426,14 @@ class RiverTelemetryGenerator:
             "bod5": 2.8,
             "turbidity": 90.0,
             "flow_rate": 6500.0,
+            "cod": 8.9,
+            "tss": 120.0,
+            "nitrate_no3": 1.35,
+            "phosphate_po4": 0.09,
+            "coliform": 3100.0,
+            "salinity": 1.80,
+            "alkalinity": 115.0,
+            "true_colour": 30.0,
         },
         "Sông Hậu": {
             "base_temp": 28.5,
@@ -225,6 +443,14 @@ class RiverTelemetryGenerator:
             "bod5": 2.6,
             "turbidity": 85.0,
             "flow_rate": 5800.0,
+            "cod": 8.4,
+            "tss": 110.0,
+            "nitrate_no3": 1.25,
+            "phosphate_po4": 0.08,
+            "coliform": 2800.0,
+            "salinity": 0.95,
+            "alkalinity": 120.0,
+            "true_colour": 28.0,
         },
         "Sông Mã": {
             "base_temp": 23.5,
@@ -234,6 +460,14 @@ class RiverTelemetryGenerator:
             "bod5": 1.9,
             "turbidity": 40.0,
             "flow_rate": 850.0,
+            "cod": 5.8,
+            "tss": 68.0,
+            "nitrate_no3": 0.88,
+            "phosphate_po4": 0.03,
+            "coliform": 950.0,
+            "salinity": 0.05,
+            "alkalinity": 110.0,
+            "true_colour": 15.0,
         },
     }
 
@@ -279,6 +513,40 @@ class RiverTelemetryGenerator:
         turbidity_ntu = round(max(2.0, baseline["turbidity"] + random.gauss(0, 3.5)), 1)
         flow_rate_m3s = round(max(10.0, baseline["flow_rate"] + random.gauss(0, 40.0)), 1)
 
+        # 8 Expanded parameters
+        cod = round(max(1.0, 1.85 * bod5 + 3.2 + random.gauss(0, 0.4)), 1)
+        tss = round(max(1.0, 1.25 * (turbidity_ntu**1.08) + random.gauss(0, 1.0)), 1)
+        nitrate_no3 = round(
+            max(
+                0.05,
+                baseline["nitrate_no3"]
+                + 0.85 * ammonia * (dissolved_oxygen / (dissolved_oxygen + 1.5)) * (1.072 ** (temp - 20.0))
+                + random.gauss(0, 0.05),
+            ),
+            2,
+        )
+        phosphate_po4 = round(max(0.01, baseline["phosphate_po4"] + random.gauss(0, 0.005)), 3)
+        i_solar = max(0.0, math.sin(math.pi * max(0, min(hour - 6, 12)) / 12.0))
+        coliform = round(
+            max(10.0, baseline["coliform"] * (1.0 - 0.45 * i_solar) + random.gauss(0, baseline["coliform"] * 0.04)),
+            0,
+        )
+        estuarine_rivers = {"Sông Sài Gòn", "Sông Đồng Nai", "Sông Tiền", "Sông Hậu"}
+        if river_name in estuarine_rivers:
+            salinity = round(
+                max(
+                    0.01,
+                    baseline["salinity"] * (1.0 + 0.55 * math.sin(2.0 * math.pi * hour / 12.42))
+                    + random.gauss(0, 0.05),
+                ),
+                2,
+            )
+        else:
+            salinity = round(max(0.01, baseline["salinity"] + random.gauss(0, 0.005)), 2)
+
+        alkalinity = round(max(10.0, baseline["alkalinity"] + random.gauss(0, 3.0)), 1)
+        true_colour = round(max(1.0, baseline["true_colour"] + random.gauss(0, 1.5)), 1)
+
         # 2. Anomaly Injection Scenarios
         is_anomaly = False
         anomaly_reason = None
@@ -291,6 +559,8 @@ class RiverTelemetryGenerator:
                     "UNTREATED_SEWAGE_DUMP",
                     "FLASH_RUNOFF_EROSION",
                     "SUDDEN_ANOXIA",
+                    "TIDAL_SALINITY_INTRUSION",
+                    "EUTROPHICATION_ALGAL_BLOOM",
                 ]
             )
             is_anomaly = True
@@ -300,6 +570,7 @@ class RiverTelemetryGenerator:
                 conductivity = round(conductivity * random.uniform(2.5, 4.0), 1)
                 ammonia = round(ammonia * random.uniform(2.0, 5.0), 3)
                 dissolved_oxygen = round(max(1.2, dissolved_oxygen * 0.45), 2)
+                alkalinity = round(random.uniform(2.0, 12.0), 1)
                 anomaly_reason = "Sự cố xả thải công nghiệp: pH giảm mạnh, độ dẫn điện và ammonia tăng vọt"
 
             elif scenario == "UNTREATED_SEWAGE_DUMP":
@@ -307,18 +578,41 @@ class RiverTelemetryGenerator:
                 bod5 = round(random.uniform(25.0, 55.0), 1)
                 dissolved_oxygen = round(max(0.8, dissolved_oxygen * 0.3), 2)
                 turbidity_ntu = round(turbidity_ntu * random.uniform(2.5, 4.5), 1)
+                cod = round(random.uniform(65.0, 160.0), 1)
+                coliform = round(random.uniform(50000.0, 450000.0), 0)
+                phosphate_po4 = round(random.uniform(0.4, 1.1), 3)
                 anomaly_reason = "Xả thải sinh hoạt/hữu cơ nghiêm trọng: Ammonia và BOD5 vượt ngưỡng cực đại"
 
             elif scenario == "FLASH_RUNOFF_EROSION":
                 turbidity_ntu = round(random.uniform(250.0, 680.0), 1)
                 flow_rate_m3s = round(flow_rate_m3s * random.uniform(2.0, 3.5), 1)
+                tss = round(random.uniform(550.0, 1600.0), 1)
+                true_colour = round(random.uniform(150.0, 400.0), 1)
                 anomaly_reason = "Lũ quét / Sạt lở ven sông: Độ đục và lưu lượng dòng chảy tăng đột biến"
 
             elif scenario == "SUDDEN_ANOXIA":
                 dissolved_oxygen = round(random.uniform(0.5, 2.2), 2)
                 anomaly_reason = "Hiện tượng cạn kiệt oxy (Anoxia): DO giảm dưới ngưỡng sinh tồn của thủy sinh"
 
-        # 3. Calculate CCME WQI
+            elif scenario == "TIDAL_SALINITY_INTRUSION":
+                salinity = round(random.uniform(6.5, 16.0), 2)
+                conductivity = round(conductivity * random.uniform(3.0, 5.0), 1)
+                chloride = round(chloride * random.uniform(4.0, 7.0), 1)
+                anomaly_reason = (
+                    "Xâm nhập mặn cực đoan triều cường: Độ mặn, độ dẫn điện và clorua tăng vọt vượt ngưỡng cho phép"
+                )
+
+            elif scenario == "EUTROPHICATION_ALGAL_BLOOM":
+                phosphate_po4 = round(random.uniform(0.35, 1.2), 3)
+                nitrate_no3 = round(random.uniform(5.5, 14.0), 2)
+                if 8 <= hour <= 16:
+                    dissolved_oxygen = round(random.uniform(13.5, 18.0), 2)
+                    ph = round(random.uniform(8.8, 9.4), 2)
+                else:
+                    dissolved_oxygen = round(random.uniform(1.2, 2.5), 2)
+                anomaly_reason = "Hiện tượng phú dưỡng hóa & bùng phát tảo nở hoa: Nồng độ PO4/NO3 vượt ngưỡng, DO dao động dị thường"
+
+        # 3. Calculate Dual-Engine WQI
         metric_dict = {
             "ph": ph,
             "dissolved_oxygen": dissolved_oxygen,
@@ -326,8 +620,17 @@ class RiverTelemetryGenerator:
             "bod5": bod5,
             "conductivity": conductivity,
             "turbidity_ntu": turbidity_ntu,
+            "cod": cod,
+            "tss": tss,
+            "nitrate_no3": nitrate_no3,
+            "phosphate_po4": phosphate_po4,
+            "coliform": coliform,
+            "salinity": salinity,
+            "alkalinity": alkalinity,
+            "true_colour": true_colour,
         }
         ccme_score, quality_label = self.physics.compute_ccme_wqi(metric_dict)
+        vn_wqi_score, vn_wqi_label = self.physics.compute_vn_wqi(metric_dict)
 
         return RiverSensorReading(
             station_id=station["station_id"],
@@ -347,8 +650,18 @@ class RiverTelemetryGenerator:
             total_hardness=total_hardness,
             turbidity_ntu=turbidity_ntu,
             flow_rate_m3s=flow_rate_m3s,
+            cod=cod,
+            tss=tss,
+            nitrate_no3=nitrate_no3,
+            phosphate_po4=phosphate_po4,
+            coliform=coliform,
+            salinity=salinity,
+            alkalinity=alkalinity,
+            true_colour=true_colour,
             ccme_score=ccme_score,
             quality_label=quality_label,
+            vn_wqi_score=vn_wqi_score,
+            vn_wqi_label=vn_wqi_label,
             is_anomaly=is_anomaly,
             anomaly_reason=anomaly_reason,
         )
@@ -411,7 +724,7 @@ def run_simulator(
 
                 alert_flag = "🚨 [ANOMALY]" if reading.is_anomaly else "🟢 [NORMAL]"
                 logger.info(
-                    "%s %s | %s | Temp: %.1f°C | pH: %.2f | DO: %.2f mg/L | WQI: %.1f (%s)",
+                    "%s %s | %s | Temp: %.1f°C | pH: %.2f | DO: %.2f mg/L | CCME: %.1f (%s) | VN_WQI: %.1f (%s)",
                     alert_flag,
                     reading.station_id,
                     reading.river_name,
@@ -420,6 +733,8 @@ def run_simulator(
                     reading.dissolved_oxygen,
                     reading.ccme_score or 0.0,
                     reading.quality_label,
+                    reading.vn_wqi_score or 0.0,
+                    reading.vn_wqi_label,
                 )
                 if reading.is_anomaly:
                     logger.warning("   └── Lý do: %s", reading.anomaly_reason)

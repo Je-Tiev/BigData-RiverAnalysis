@@ -107,6 +107,59 @@ class TestRiverDataContracts(unittest.TestCase):
         self.assertEqual(data["quality_label"], "Good")
         self.assertEqual(data["temperature"], 25.0)
 
+    def test_schema_v1_3_expanded_fields_serialization_and_from_dict(self):
+        payload = {
+            "schema_version": "1.3.0",
+            "station_id": "ST_TEST_02",
+            "station_name": "Trạm Thử Nghiệm v1.3",
+            "river_name": "Sông Hồng",
+            "basin_name": "Lưu vực sông Hồng - Thái Bình",
+            "latitude": 21.0,
+            "longitude": 105.8,
+            "timestamp": "2026-11-13T12:00:00Z",
+            "temperature": 26.5,
+            "ph": 7.4,
+            "dissolved_oxygen": 7.8,
+            "conductivity": 350.0,
+            "ammonia": 0.08,
+            "bod5": 1.9,
+            "chloride": 22.0,
+            "total_hardness": 130.0,
+            "turbidity_ntu": 25.0,
+            "flow_rate_m3s": 2500.0,
+            "cod": 6.2,
+            "tss": 38.0,
+            "nitrate_no3": 1.1,
+            "phosphate_po4": 0.04,
+            "coliform": 1200.0,
+            "salinity": 0.04,
+            "alkalinity": 135.0,
+            "true_colour": 15.0,
+            "ccme_score": 91.0,
+            "quality_label": "Excellent",
+            "vn_wqi_score": 88.5,
+            "vn_wqi_label": "Tốt",
+            "qcvn_tier": "A",
+            "is_anomaly": False,
+        }
+        reading = RiverSensorReading.from_dict(payload)
+        self.assertEqual(reading.cod, 6.2)
+        self.assertEqual(reading.tss, 38.0)
+        self.assertEqual(reading.nitrate_no3, 1.1)
+        self.assertEqual(reading.phosphate_po4, 0.04)
+        self.assertEqual(reading.coliform, 1200.0)
+        self.assertEqual(reading.salinity, 0.04)
+        self.assertEqual(reading.alkalinity, 135.0)
+        self.assertEqual(reading.true_colour, 15.0)
+        self.assertEqual(reading.vn_wqi_score, 88.5)
+        self.assertEqual(reading.vn_wqi_label, "Tốt")
+        self.assertEqual(reading.qcvn_tier, "A")
+
+        data_dict = reading.to_dict()
+        self.assertEqual(data_dict["schema_version"], "1.3.0")
+        self.assertEqual(data_dict["cod"], 6.2)
+        self.assertEqual(data_dict["vn_wqi_label"], "Tốt")
+
 
 class TestHydrologicalPhysicsEngine(unittest.TestCase):
     """Test suite for physics calculations (temperature, DO solubility, CCME WQI)."""
@@ -152,6 +205,36 @@ class TestHydrologicalPhysicsEngine(unittest.TestCase):
         self.assertLess(score, 50.0)
         self.assertIn(label, ["Marginal", "Poor"])
 
+    def test_vn_wqi_pristine_water(self):
+        pristine = {
+            "ph": 7.5,
+            "dissolved_oxygen": 7.8,
+            "bod5": 2.0,
+            "cod": 8.0,
+            "ammonia": 0.08,
+            "nitrate_no3": 0.8,
+            "phosphate_po4": 0.03,
+            "coliform": 800.0,
+        }
+        score, label = self.physics.compute_vn_wqi(pristine)
+        self.assertGreaterEqual(score, 90.0)
+        self.assertEqual(label, "Rất tốt")
+
+    def test_vn_wqi_heavily_polluted_water(self):
+        polluted = {
+            "ph": 4.5,
+            "dissolved_oxygen": 1.2,
+            "bod5": 35.0,
+            "cod": 95.0,
+            "ammonia": 3.5,
+            "nitrate_no3": 18.0,
+            "phosphate_po4": 1.2,
+            "coliform": 250000.0,
+        }
+        score, label = self.physics.compute_vn_wqi(polluted)
+        self.assertLess(score, 30.0)
+        self.assertIn(label, ["Kém", "Ô nhiễm nặng"])
+
 
 class TestRiverTelemetryGenerator(unittest.TestCase):
     """Test suite for the IoT Generator and anomaly injection."""
@@ -183,6 +266,54 @@ class TestRiverTelemetryGenerator(unittest.TestCase):
         self.assertTrue(reading.is_anomaly)
         self.assertGreater(reading.ammonia, 2.0)
         self.assertGreater(reading.bod5, 20.0)
+
+    def test_anomaly_injection_tidal_salinity(self):
+        station = REFERENCE_STATIONS[5]  # Sông Sài Gòn
+        reading = self.generator.generate_single_reading(station=station, force_anomaly="TIDAL_SALINITY_INTRUSION")
+        self.assertTrue(reading.is_anomaly)
+        self.assertIsNotNone(reading.anomaly_reason)
+        self.assertIn("Xâm nhập mặn", reading.anomaly_reason)
+        self.assertGreater(reading.salinity, 5.0)
+
+    def test_anomaly_injection_eutrophication(self):
+        station = REFERENCE_STATIONS[0]
+        reading = self.generator.generate_single_reading(station=station, force_anomaly="EUTROPHICATION_ALGAL_BLOOM")
+        self.assertTrue(reading.is_anomaly)
+        self.assertIsNotNone(reading.anomaly_reason)
+        self.assertIn("phú dưỡng hóa", reading.anomaly_reason)
+        self.assertGreater(reading.phosphate_po4, 0.3)
+        self.assertGreater(reading.nitrate_no3, 5.0)
+
+    def test_generator_populates_all_18_parameters_and_dual_wqi(self):
+        station = REFERENCE_STATIONS[0]
+        reading = self.generator.generate_single_reading(station=station)
+        # Verify all 18 physicochemical and hydrological parameters are non-null
+        fields_to_check = [
+            "temperature",
+            "ph",
+            "dissolved_oxygen",
+            "conductivity",
+            "ammonia",
+            "bod5",
+            "chloride",
+            "total_hardness",
+            "turbidity_ntu",
+            "flow_rate_m3s",
+            "cod",
+            "tss",
+            "nitrate_no3",
+            "phosphate_po4",
+            "coliform",
+            "salinity",
+            "alkalinity",
+            "true_colour",
+        ]
+        data = reading.to_dict()
+        for f in fields_to_check:
+            self.assertIsNotNone(data[f], f"Field '{f}' should not be None")
+        self.assertIsNotNone(reading.ccme_score)
+        self.assertIsNotNone(reading.vn_wqi_score)
+        self.assertIsNotNone(reading.vn_wqi_label)
 
 
 if __name__ == "__main__":

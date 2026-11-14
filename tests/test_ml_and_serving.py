@@ -189,6 +189,7 @@ class TestFastAPIServing(unittest.TestCase):
         self.assertEqual(response.status_code, 200)
         data = response.json()
         self.assertEqual(data["status"], "HEALTHY")
+        self.assertEqual(data["version"], "1.3.0")
         self.assertIn("RiverAnomalyDetector_v1.2", data["models_loaded"])
 
     def test_anomaly_score_endpoint(self):
@@ -199,6 +200,32 @@ class TestFastAPIServing(unittest.TestCase):
                 "ph": 7.4,
                 "dissolved_oxygen": 7.8,
                 "ammonia": 0.05,
+            },
+            "recent_history": [],
+            "publish_alert_on_critical": False,
+        }
+        response = self.client.post("/v1/anomaly/score", json=payload)
+        self.assertEqual(response.status_code, 200)
+        data = response.json()
+        self.assertEqual(data["severity"], "NORMAL")
+        self.assertFalse(data["is_anomaly"])
+
+    def test_anomaly_score_endpoint_with_v1_3_expanded_fields(self):
+        payload = {
+            "reading": {
+                "station_id": "ST_TEST_API_V13",
+                "temperature": 26.0,
+                "ph": 7.2,
+                "dissolved_oxygen": 7.5,
+                "ammonia": 0.08,
+                "cod": 8.5,
+                "tss": 45.0,
+                "nitrate_no3": 1.2,
+                "phosphate_po4": 0.05,
+                "coliform": 1500.0,
+                "salinity": 0.08,
+                "alkalinity": 120.0,
+                "true_colour": 18.0,
             },
             "recent_history": [],
             "publish_alert_on_critical": False,

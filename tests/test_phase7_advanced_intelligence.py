@@ -526,6 +526,30 @@ class TestAC08DLQRecoveryAndFastAPI:
         stats = engine.get_recovery_audit_stats()
         assert stats["heal_rate_pct"] >= 90.0
 
+        # Test v1.3 expanded parameter alias recovery
+        expanded_corrupted = {
+            "station_id": "ST_HONG_LB_01",
+            "Chemical Oxygen Demand": " 12.5 mg/L",
+            "Total Suspended Solids": " 45.0 mg/L",
+            "Nitrate (NO3)": " 1.45 ",
+            "Ortho-Phosphate": " 0.08 ",
+            "Total Coliform": " 1200 MPN ",
+            "Salinity (ppt)": " 0.05 ppt",
+            "Total Alkalinity": " 140 mg/L",
+            "True Colour": " 15 Pt-Co",
+        }
+        res_exp = engine.heal_payload(expanded_corrupted)
+        assert res_exp["healed"]
+        rep_exp = res_exp["repaired_payload"]
+        assert rep_exp["cod"] == 12.5
+        assert rep_exp["tss"] == 45.0
+        assert rep_exp["nitrate_no3"] == 1.45
+        assert rep_exp["phosphate_po4"] == 0.08
+        assert rep_exp["coliform"] == 1200.0
+        assert rep_exp["salinity"] == 0.05
+        assert rep_exp["alkalinity"] == 140.0
+        assert rep_exp["true_colour"] == 15.0
+
     def test_fastapi_propagation_endpoint(self) -> None:
         payload = {
             "upstream_station_id": "ST_DA_HB_02",

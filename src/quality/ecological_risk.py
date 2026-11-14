@@ -128,18 +128,102 @@ class QCVN082023Classifier:
                 return "C"
             return "D"
 
+        if p in ("cod", "chemical_oxygen_demand"):
+            if v <= 15.0:
+                return "A"
+            if v <= 30.0:
+                return "B"
+            if v <= 50.0:
+                return "C"
+            return "D"
+
+        if p in ("tss", "total_suspended_solids"):
+            if v <= 25.0:
+                return "A"
+            if v <= 50.0:
+                return "B"
+            if v <= 100.0:
+                return "C"
+            return "D"
+
+        if p in ("nitrate_no3", "nitrate", "no3"):
+            if v <= 2.0:
+                return "A"
+            if v <= 5.0:
+                return "B"
+            if v <= 10.0:
+                return "C"
+            return "D"
+
+        if p in ("phosphate_po4", "phosphate", "po4"):
+            if v <= 0.1:
+                return "A"
+            if v <= 0.2:
+                return "B"
+            if v <= 0.3:
+                return "C"
+            return "D"
+
+        if p in ("coliform", "total_coliform", "fecal_coliform"):
+            if v <= 2500.0:
+                return "A"
+            if v <= 5000.0:
+                return "B"
+            if v <= 7500.0:
+                return "C"
+            return "D"
+
+        if p in ("salinity", "do man", "độ mặn"):
+            if v <= 0.25:
+                return "A"
+            if v <= 1.0:
+                return "B"
+            if v <= 4.0:
+                return "C"
+            return "D"
+
+        if p in ("true_colour", "colour", "color", "true_color"):
+            if v <= 20.0:
+                return "A"
+            if v <= 50.0:
+                return "B"
+            if v <= 100.0:
+                return "C"
+            return "D"
+
         # Default fallback for unlisted or neutral parameters
         return "A"
 
     def classify_reading(self, reading: dict[str, Any]) -> dict[str, Any]:
         """Classifies a multi-parameter reading using the limiting factor principle (worst parameter wins)."""
-        evaluable_params = ["ph", "dissolved_oxygen", "ammonia", "bod5", "turbidity_ntu", "chloride"]
+        evaluable_params = [
+            "ph",
+            "dissolved_oxygen",
+            "ammonia",
+            "bod5",
+            "turbidity_ntu",
+            "chloride",
+            "cod",
+            "tss",
+            "nitrate_no3",
+            "phosphate_po4",
+            "coliform",
+            "salinity",
+            "true_colour",
+        ]
         parameter_tiers: dict[str, str] = {}
         max_rank = 1
 
         for param in evaluable_params:
-            if param in reading and reading[param] is not None:
-                tier = self.classify_parameter(param, float(reading[param]))
+            val = reading.get(param)
+            if val is None and param == "nitrate_no3":
+                val = reading.get("nitrate")
+            if val is None and param == "phosphate_po4":
+                val = reading.get("phosphate")
+            if val is None and param == "true_colour":
+                val = reading.get("colour") or reading.get("color") or reading.get("true_color")
+            if val is not None:
+                tier = self.classify_parameter(param, float(val))
                 parameter_tiers[param] = tier
                 rank = self.TIER_RANK.get(tier, 1)
                 max_rank = max(max_rank, rank)

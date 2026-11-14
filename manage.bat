@@ -77,7 +77,7 @@ echo   manage.bat logs         Tail logs of containers
 echo   manage.bat clean        Remove containers and volumes
 echo.
 echo Development ^& Testing:
-echo   manage.bat test         Run 51 Pytest tests
+echo   manage.bat test         Run 114 Pytest tests
 echo   manage.bat lint         Run Ruff linter
 echo   manage.bat format       Fix linting issues
 echo.
